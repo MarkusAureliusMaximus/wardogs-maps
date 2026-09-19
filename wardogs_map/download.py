@@ -1,9 +1,11 @@
 import hashlib
 import json
 import socket
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from wardogs_map import paths
@@ -16,6 +18,7 @@ ASSETS_BASE = "https://assets.wardogs-artillery.com/releases/assets-v1"
 ASSETS_NETLOC = "assets.wardogs-artillery.com"
 MAX_ZOOM = 7
 RETRIES = 2
+TILE_WORKERS = 16
 USER_AGENT = "Mozilla/5.0 (compatible; wardogs-map-studio/1.0)"
 
 
@@ -109,6 +112,35 @@ def fetch_file(url: str, dest: Path) -> str:
     return "fail"
 
 
+def fetch_many(jobs: list[tuple[str, Path]], workers: int = TILE_WORKERS) -> dict[str, int]:
+    """Download independent files concurrently. Returns counts of ok/skipped/fail."""
+    counts = {"ok": 0, "skipped": 0, "fail": 0}
+    if not jobs:
+        return counts
+    lock = threading.Lock()
+    total = len(jobs)
+    done = 0
+
+    def run(job: tuple[str, Path]) -> str:
+        url, dest = job
+        return fetch_file(url, dest)
+
+    workers = max(1, min(workers, total))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(run, job) for job in jobs]
+        for future in as_completed(futures):
+            result = future.result()
+            with lock:
+                counts[result] = counts.get(result, 0) + 1
+                done += 1
+                if done == total or done % 64 == 0:
+                    print(
+                        f"fetch {done}/{total} ok={counts['ok']} skip={counts['skipped']} fail={counts['fail']}",
+                        flush=True,
+                    )
+    return counts
+
+
 def verify_chunk(path: Path, bytes_expected: int, sha256_hex: str) -> bool:
     try:
         if path.stat().st_size != bytes_expected:
@@ -136,14 +168,11 @@ def prepare_map(map_id: str) -> bool:
     cache_dir.mkdir(parents=True, exist_ok=True)
     baked_dir.mkdir(parents=True, exist_ok=True)
 
+    tile_jobs: list[tuple[str, Path]] = []
     for z in range(0, MAX_ZOOM + 1):
         side = 1 << z
-        n = side * side
-        i = 0
         for x in range(side):
             for y in range(side):
-                i += 1
-                print(f"{map_id} zoom {z} tile {i}/{n}", flush=True)
                 for style in ("grayscale", "color"):
                     dest = (
                         cache_dir
@@ -153,10 +182,13 @@ def prepare_map(map_id: str) -> bool:
                         / f"zoom_{z}"
                         / f"{x}_{y}.webp"
                     )
-                    tile_url = _tile_url(map_id, style, z, x, y)
-                    result = fetch_file(tile_url, dest)
-                    if result == "fail":
-                        print(f"{map_id} tile fail {style} {z}/{x}_{y}", flush=True)
+                    tile_jobs.append((_tile_url(map_id, style, z, x, y), dest))
+    print(f"{map_id} fetching {len(tile_jobs)} tiles ({TILE_WORKERS} workers)", flush=True)
+    tile_counts = fetch_many(tile_jobs, workers=TILE_WORKERS)
+    print(
+        f"{map_id} tiles done ok={tile_counts['ok']} skip={tile_counts['skipped']} fail={tile_counts['fail']}",
+        flush=True,
+    )
 
     manifest_url = _manifest_url(map_id)
     if not allowed_fetch_url(manifest_url):
@@ -172,6 +204,8 @@ def prepare_map(map_id: str) -> bool:
     verified_entries: list[dict] = []
     verified_bins: dict[str, bytes] = {}
     fail_count = 0
+    chunk_jobs: list[tuple[str, Path]] = []
+    pending: list[tuple[str, dict, Path]] = []
 
     for key, entry in chunks.items():
         rel = entry["file"] if isinstance(entry, dict) else None
@@ -185,7 +219,15 @@ def prepare_map(map_id: str) -> bool:
             fail_count += 1
             print(f"{map_id} chunk fail {rel} ({fail_count})", flush=True)
             continue
-        fetch_file(chunk_url, chunk_path)
+        chunk_jobs.append((chunk_url, chunk_path))
+        pending.append((key, entry, chunk_path))
+
+    if chunk_jobs:
+        print(f"{map_id} fetching {len(chunk_jobs)} chunks ({TILE_WORKERS} workers)", flush=True)
+        fetch_many(chunk_jobs, workers=TILE_WORKERS)
+
+    for key, entry, chunk_path in pending:
+        rel = entry["file"]
         ok = verify_chunk(
             chunk_path,
             bytes_expected=int(entry["bytes"]),

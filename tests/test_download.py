@@ -2,7 +2,7 @@ import hashlib
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from wardogs_map.download import fetch_file, prepare_all, verify_chunk
+from wardogs_map.download import fetch_file, fetch_many, prepare_all, verify_chunk
 
 
 def test_fetch_file_skips_existing_nonzero(tmp_path):
@@ -45,6 +45,39 @@ def test_fetch_file_sends_user_agent(tmp_path):
         url = f"http://127.0.0.1:{httpd.server_address[1]}/0_0.webp"
         assert fetch_file(url, dest) == "ok"
         assert dest.read_bytes() == b"tile"
+    finally:
+        httpd.shutdown()
+
+
+def test_fetch_many_downloads_in_parallel(tmp_path):
+    hits = {"n": 0}
+    lock = threading.Lock()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            with lock:
+                hits["n"] += 1
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(self.path.encode("ascii"))
+
+        def log_message(self, *_args):
+            return
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = httpd.server_address[1]
+        jobs = [
+            (f"http://127.0.0.1:{port}/{i}.bin", tmp_path / f"{i}.bin")
+            for i in range(8)
+        ]
+        counts = fetch_many(jobs, workers=8)
+        assert counts["ok"] == 8
+        assert counts["fail"] == 0
+        assert hits["n"] == 8
+        assert (tmp_path / "3.bin").read_bytes() == b"/3.bin"
     finally:
         httpd.shutdown()
 
