@@ -8,8 +8,24 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from wardogs_map import paths
-from wardogs_map.mapspec import list_map_ids
+from wardogs_map.mapspec import list_map_ids, load_map
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
+
+_CONTENT_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".geojson": "application/json",
+    ".html": "text/html; charset=utf-8",
+    ".ico": "image/x-icon",
+    ".js": "text/javascript; charset=utf-8",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+}
+
+
+def _content_type(path: Path) -> str:
+    return _CONTENT_TYPES.get(path.suffix.lower(), "application/octet-stream")
 
 
 @dataclass
@@ -56,6 +72,12 @@ class StudioHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/overlay/"):
             self._send_overlay(path)
+            return
+        if path.startswith("/web/"):
+            self._send_static(WEB_DIR, path[len("/web/") :])
+            return
+        if path.startswith("/vendor/"):
+            self._send_static(WEB_DIR / "vendor", path[len("/vendor/") :])
             return
         self.send_error(404)
 
@@ -111,6 +133,10 @@ class StudioHandler(BaseHTTPRequestHandler):
         if candidate.is_absolute() or ".." in candidate.parts:
             self.send_error(404)
             return
+        map_id = candidate.stem
+        if candidate.name == f"{map_id}.json" and map_id in list_map_ids():
+            self._send_json(load_map(map_id))
+            return
         root = MAPS_DIR.resolve()
         target = (MAPS_DIR / candidate).resolve()
         try:
@@ -119,6 +145,13 @@ class StudioHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         self._send_file(target, "application/json")
+
+    def _send_static(self, root: Path, rel: str) -> None:
+        if not rel or rel.endswith("/"):
+            self.send_error(404)
+            return
+        relative = Path(rel)
+        self._send_under(root, relative, _content_type(relative))
 
     def _send_under(self, root: Path, relative: Path, content_type: str) -> None:
         if relative.is_absolute() or ".." in relative.parts:

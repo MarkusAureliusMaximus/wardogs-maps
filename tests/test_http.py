@@ -52,6 +52,8 @@ def test_maps_json_and_method_not_allowed():
         assert res.status == 200
         body = json.loads(res.read())
         assert body["id"] == "bakurani"
+        assert body["colorTileTemplate"] == "/tiles/bakurani/color/{z}/{x}/{y}.webp"
+        assert body["hillshadeTemplate"] == "/overlay/bakurani/hillshade/{z}/{x}/{y}.png"
         conn.request("GET", "/maps/index.json")
         res = conn.getresponse()
         assert res.status == 200
@@ -185,6 +187,41 @@ def test_tile_and_overlay_and_traversal(tmp_path, monkeypatch):
         res.read()
 
         conn.request("GET", "/tiles/bakurani/color/0/../0/0.webp")
+        res = conn.getresponse()
+        assert res.status == 404
+        res.read()
+    finally:
+        httpd.shutdown()
+
+
+def test_index_served():
+    class H(StudioHandler):
+        context = _Ctx(stores={}, status={"maps": {}})
+
+    httpd = _serve(H)
+    try:
+        conn = HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+        conn.request("GET", "/")
+        res = conn.getresponse()
+        body = res.read()
+        assert res.status == 200
+        assert b"leaflet" in body.lower()
+        assert b"unpkg" not in body.lower()
+        assert b"cdnjs" not in body.lower()
+        assert b"jsdelivr" not in body.lower()
+        conn.request("GET", "/vendor/leaflet.js")
+        res = conn.getresponse()
+        assert res.status == 200
+        res.read()
+        conn.request("GET", "/web/app.js")
+        res = conn.getresponse()
+        assert res.status == 200
+        res.read()
+        conn.request("GET", "/web/app.css")
+        res = conn.getresponse()
+        assert res.status == 200
+        res.read()
+        conn.request("GET", "/vendor/../index.html")
         res = conn.getresponse()
         assert res.status == 404
         res.read()

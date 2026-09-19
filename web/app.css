@@ -1,0 +1,79 @@
+html,
+body {
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  background: #0d1012;
+  color: #e8ece8;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+#toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: calc(0.5rem + env(safe-area-inset-top)) 0.6rem 0.5rem;
+  background: #151a1d;
+  z-index: 1000;
+}
+
+.maps,
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+button {
+  min-height: 2.75rem;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid #3a4448;
+  background: #1f2629;
+  color: #e8ece8;
+  border-radius: 999px;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+button.active {
+  background: #2c3a2e;
+  border-color: #d7a452;
+  color: #d7a452;
+}
+
+#map {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  background: #0d1012;
+}
+
+.leaflet-container {
+  background: #0d1012;
+  font: inherit;
+}
+
+.layer-hillshade {
+  mix-blend-mode: multiply;
+}
+
+#readout {
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 auto;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 1rem;
+  background: #151a1d;
+  z-index: 1000;
+  min-height: 1.25em;
+}

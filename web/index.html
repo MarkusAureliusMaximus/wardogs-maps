@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WARDOGS Map Studio</title>
+  <link rel="stylesheet" href="/vendor/leaflet.css">
+  <link rel="stylesheet" href="/web/app.css">
+</head>
+<body>
+  <header id="toolbar">
+    <nav class="maps" aria-label="Maps">
+      <button type="button" data-map="bakurani" class="active">Bakurani</button>
+      <button type="button" data-map="ozeti">Ozeti</button>
+      <button type="button" data-map="zestafona">Zestafona</button>
+    </nav>
+    <nav class="chips" aria-label="Layers">
+      <button type="button" data-tiles="color" class="active">Tiles color</button>
+      <button type="button" data-tiles="gray">Tiles gray</button>
+      <button type="button" data-layer="hillshade" class="active">Hillshade</button>
+      <button type="button" data-layer="hypsometric">Color</button>
+      <button type="button" data-layer="contours">Contours</button>
+      <button type="button" data-layer="markers" class="active">Markers</button>
+      <button type="button" data-layer="cz" class="active">CZ</button>
+      <button type="button" data-action="randomize-cz">Randomize CZ</button>
+      <button type="button" data-action="from">From</button>
+      <button type="button" data-action="clear-from">Clear From</button>
+    </nav>
+  </header>
+  <div id="map"></div>
+  <div id="readout"></div>
+  <script src="/vendor/leaflet.js"></script>
+  <script src="/web/app.js"></script>
+</body>
+</html>
