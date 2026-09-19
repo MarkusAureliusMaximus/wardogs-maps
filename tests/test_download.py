@@ -1,4 +1,7 @@
 import hashlib
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 from wardogs_map.download import fetch_file, prepare_all, verify_chunk
 
 
@@ -17,6 +20,33 @@ def test_fetch_file_rejects_disallowed_url(tmp_path, monkeypatch):
     assert fetch_file("file:///C:/Windows/win.ini", dest) == "fail"
     assert fetch_file("https://example.com/chunks/1_2.bin", dest) == "fail"
     assert not dest.exists()
+
+
+def test_fetch_file_sends_user_agent(tmp_path):
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            ua = self.headers.get("User-Agent") or ""
+            if "wardogs-map-studio" in ua:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"tile")
+            else:
+                self.send_response(403)
+                self.end_headers()
+
+        def log_message(self, *_args):
+            return
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    try:
+        dest = tmp_path / "0_0.webp"
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/0_0.webp"
+        assert fetch_file(url, dest) == "ok"
+        assert dest.read_bytes() == b"tile"
+    finally:
+        httpd.shutdown()
 
 
 def test_verify_chunk_sha_and_size(tmp_path):

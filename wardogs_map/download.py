@@ -16,6 +16,7 @@ ASSETS_BASE = "https://assets.wardogs-artillery.com/releases/assets-v1"
 ASSETS_NETLOC = "assets.wardogs-artillery.com"
 MAX_ZOOM = 7
 RETRIES = 2
+USER_AGENT = "Mozilla/5.0 (compatible; wardogs-map-studio/1.0)"
 
 
 def allowed_fetch_url(url: str) -> bool:
@@ -84,9 +85,10 @@ def fetch_file(url: str, dest: Path) -> str:
     part = dest.with_suffix(".part")
     attempts = RETRIES + 1
 
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     for attempt in range(attempts):
         try:
-            with urllib.request.urlopen(url, timeout=60) as resp:
+            with urllib.request.urlopen(request, timeout=60) as resp:
                 data = resp.read()
             part.write_bytes(data)
             part.replace(dest)
@@ -151,7 +153,10 @@ def prepare_map(map_id: str) -> bool:
                         / f"zoom_{z}"
                         / f"{x}_{y}.webp"
                     )
-                    fetch_file(_tile_url(map_id, style, z, x, y), dest)
+                    tile_url = _tile_url(map_id, style, z, x, y)
+                    result = fetch_file(tile_url, dest)
+                    if result == "fail":
+                        print(f"{map_id} tile fail {style} {z}/{x}_{y}", flush=True)
 
     manifest_url = _manifest_url(map_id)
     if not allowed_fetch_url(manifest_url):
