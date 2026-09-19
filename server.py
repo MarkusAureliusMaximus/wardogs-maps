@@ -1,7 +1,7 @@
 import argparse
 from http.server import ThreadingHTTPServer
 from wardogs_map.httpapp import StudioHandler, make_context
-from wardogs_map.lan import lan_urls, print_qr
+from wardogs_map.lan import lan_urls, pick_qr_url, print_qr, private_ipv4s
 
 
 def main():
@@ -15,10 +15,11 @@ def main():
     print("WARDOGS Map Studio")
     for u in urls:
         print(u)
-    if urls:
-        print_qr(urls[-1] if len(urls) > 1 else urls[0])
-    else:
+    if not private_ipv4s():
         print("No private IPv4 found. Allow Python on Private networks in Windows Firewall.")
+    qr_url = pick_qr_url(urls)
+    if qr_url:
+        print_qr(qr_url)
     try:
         httpd.serve_forever()
     except OSError as exc:

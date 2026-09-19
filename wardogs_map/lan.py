@@ -22,6 +22,14 @@ def lan_urls(port: int) -> list[str]:
     return urls
 
 
+def pick_qr_url(urls: list[str]) -> str | None:
+    """First non-loopback URL, or None if only localhost."""
+    for url in urls:
+        if "127.0.0.1" not in url and "localhost" not in url.lower():
+            return url
+    return None
+
+
 def print_qr(url: str) -> None:
     qr = qrcode.QRCode()
     qr.add_data(url)
