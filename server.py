@@ -10,7 +10,10 @@ def main():
     p.add_argument("--host", default="0.0.0.0")
     args = p.parse_args()
     StudioHandler.context = make_context()
-    httpd = ThreadingHTTPServer((args.host, args.port), StudioHandler)
+    try:
+        httpd = ThreadingHTTPServer((args.host, args.port), StudioHandler)
+    except OSError as exc:
+        raise SystemExit(f"bind failed: {exc}") from exc
     urls = lan_urls(args.port)
     print("WARDOGS Map Studio")
     for u in urls:
@@ -20,10 +23,7 @@ def main():
     qr_url = pick_qr_url(urls)
     if qr_url:
         print_qr(qr_url)
-    try:
-        httpd.serve_forever()
-    except OSError as exc:
-        raise SystemExit(f"bind failed: {exc}") from exc
+    httpd.serve_forever()
 
 
 if __name__ == "__main__":

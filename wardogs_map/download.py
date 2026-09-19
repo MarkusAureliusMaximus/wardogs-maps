@@ -13,8 +13,57 @@ from wardogs_map.overlays import bake_map
 from wardogs_map.terrain import TerrainStore
 
 ASSETS_BASE = "https://assets.wardogs-artillery.com/releases/assets-v1"
+ASSETS_NETLOC = "assets.wardogs-artillery.com"
 MAX_ZOOM = 7
 RETRIES = 2
+
+
+def allowed_fetch_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme == "https" and parsed.netloc == ASSETS_NETLOC:
+        return True
+    if parsed.scheme == "http" and parsed.hostname == "127.0.0.1":
+        return True
+    return False
+
+
+def _is_relative_chunk_file(rel: str) -> bool:
+    if not isinstance(rel, str) or not rel:
+        return False
+    if rel.startswith(("/", "\\")) or "://" in rel:
+        return False
+    if len(rel) >= 2 and rel[0].isalpha() and rel[1] == ":":
+        return False
+    candidate = Path(rel)
+    if candidate.is_absolute() or bool(candidate.drive):
+        return False
+    if any(part == ".." for part in candidate.parts):
+        return False
+    if any(part == ".." for part in rel.replace("\\", "/").split("/")):
+        return False
+    return True
+
+
+def jailed_chunk_path(map_terrain_dir: Path, rel: object) -> Path | None:
+    if not _is_relative_chunk_file(rel if isinstance(rel, str) else ""):
+        return None
+    chunk_path = map_terrain_dir / rel
+    try:
+        chunk_path.resolve().relative_to(map_terrain_dir.resolve())
+    except (ValueError, OSError):
+        return None
+    return chunk_path
+
+
+def _unlink_under_map_dir(map_terrain_dir: Path, chunk_path: Path) -> None:
+    try:
+        chunk_path.resolve().relative_to(map_terrain_dir.resolve())
+    except (ValueError, OSError):
+        return
+    try:
+        chunk_path.unlink(missing_ok=True)
+    except OSError:
+        return
 
 
 def _is_timeout(exc: BaseException) -> bool:
@@ -26,6 +75,8 @@ def _is_timeout(exc: BaseException) -> bool:
 
 
 def fetch_file(url: str, dest: Path) -> str:
+    if not allowed_fetch_url(url):
+        return "fail"
     if dest.exists() and dest.stat().st_size > 0:
         return "skipped"
 
@@ -57,9 +108,12 @@ def fetch_file(url: str, dest: Path) -> str:
 
 
 def verify_chunk(path: Path, bytes_expected: int, sha256_hex: str) -> bool:
-    if not path.exists():
+    try:
+        if path.stat().st_size != bytes_expected:
+            return False
+        data = path.read_bytes()
+    except OSError:
         return False
-    data = path.read_bytes()
     if len(data) != bytes_expected:
         return False
     return hashlib.sha256(data).hexdigest() == sha256_hex
@@ -100,7 +154,10 @@ def prepare_map(map_id: str) -> bool:
                     fetch_file(_tile_url(map_id, style, z, x, y), dest)
 
     manifest_url = _manifest_url(map_id)
-    manifest_path = cache_dir / "terrain" / map_id / "manifest.json"
+    if not allowed_fetch_url(manifest_url):
+        return False
+    map_terrain_dir = cache_dir / "terrain" / map_id
+    manifest_path = map_terrain_dir / "manifest.json"
     result = fetch_file(manifest_url, manifest_path)
     if result == "fail" or not manifest_path.exists():
         return False
@@ -112,9 +169,17 @@ def prepare_map(map_id: str) -> bool:
     fail_count = 0
 
     for key, entry in chunks.items():
-        rel = entry["file"]
-        chunk_url = urllib.parse.urljoin(manifest_url, rel)
-        chunk_path = cache_dir / "terrain" / map_id / rel
+        rel = entry["file"] if isinstance(entry, dict) else None
+        chunk_path = jailed_chunk_path(map_terrain_dir, rel)
+        if chunk_path is None:
+            fail_count += 1
+            print(f"{map_id} chunk fail {rel} ({fail_count})", flush=True)
+            continue
+        chunk_url = urllib.parse.urljoin(manifest_url, str(rel).replace("\\", "/"))
+        if not allowed_fetch_url(chunk_url):
+            fail_count += 1
+            print(f"{map_id} chunk fail {rel} ({fail_count})", flush=True)
+            continue
         fetch_file(chunk_url, chunk_path)
         ok = verify_chunk(
             chunk_path,
@@ -122,12 +187,17 @@ def prepare_map(map_id: str) -> bool:
             sha256_hex=str(entry["sha256"]),
         )
         if ok:
+            try:
+                if chunk_path.stat().st_size != int(entry["bytes"]):
+                    raise OSError("size")
+                verified_bins[key] = chunk_path.read_bytes()
+            except OSError:
+                ok = False
+        if ok:
             verified_entries.append(entry)
-            verified_bins[key] = chunk_path.read_bytes()
         else:
             fail_count += 1
-            if chunk_path.exists():
-                chunk_path.unlink()
+            _unlink_under_map_dir(map_terrain_dir, chunk_path)
             print(f"{map_id} chunk fail {rel} ({fail_count})", flush=True)
 
     if not verified_entries:
@@ -167,4 +237,8 @@ def prepare_map(map_id: str) -> bool:
 
 
 def prepare_all(ids: list[str]) -> bool:
-    return all(prepare_map(map_id) for map_id in ids)
+    ok = True
+    for map_id in ids:
+        if not prepare_map(map_id):
+            ok = False
+    return ok

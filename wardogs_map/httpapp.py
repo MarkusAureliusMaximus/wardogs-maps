@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from wardogs_map import paths
 from wardogs_map.cz import randomize_cz
-from wardogs_map.download import verify_chunk
+from wardogs_map.download import jailed_chunk_path, verify_chunk
 from wardogs_map.mapspec import list_map_ids, load_map
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
 from wardogs_map.terrain import TerrainStore
@@ -51,14 +51,26 @@ def make_context() -> StudioContext:
         except (OSError, json.JSONDecodeError):
             continue
         verified_bins: dict[str, bytes] = {}
+        map_terrain_dir = paths.CACHE_DIR / "terrain" / map_id
         for key, entry in (manifest.get("chunks") or {}).items():
-            chunk_path = paths.CACHE_DIR / "terrain" / map_id / entry["file"]
-            if verify_chunk(
-                chunk_path,
-                bytes_expected=int(entry["bytes"]),
-                sha256_hex=str(entry["sha256"]),
-            ):
+            if not isinstance(entry, dict):
+                continue
+            chunk_path = jailed_chunk_path(map_terrain_dir, entry.get("file"))
+            if chunk_path is None:
+                continue
+            try:
+                expected = int(entry["bytes"])
+                sha = str(entry["sha256"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if not verify_chunk(chunk_path, bytes_expected=expected, sha256_hex=sha):
+                continue
+            try:
+                if chunk_path.stat().st_size != expected:
+                    continue
                 verified_bins[key] = chunk_path.read_bytes()
+            except OSError:
+                continue
         if verified_bins:
             map_min: float | None = None
             stats_path = paths.BAKED_DIR / map_id / "height-stats.json"
@@ -159,7 +171,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         self._send_json(
             {
                 "ok": sample.ok,
-                "inCoverage": sample.in_coverage,
+                "inCoverage": sample.in_coverage if sample.ok else False,
                 "relZ": sample.rel_z,
                 "map": map_id,
                 "x": x,

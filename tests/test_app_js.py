@@ -1,0 +1,19 @@
+from pathlib import Path
+
+APP_JS = Path(__file__).resolve().parents[1] / "web" / "app.js"
+
+
+def _set_readout_source() -> str:
+    src = APP_JS.read_text(encoding="utf-8")
+    start = src.index("function setReadout")
+    end = src.index("\nfunction ", start + 1)
+    return src[start:end]
+
+
+def test_set_readout_keeps_coords_when_z_missing():
+    fn = _set_readout_source()
+    assert "toFixed(2)" in fn
+    assert '"X "' in fn
+    assert '"  Y "' in fn
+    assert "coords +" in fn
+    assert "rel —" in fn or "no coverage" in fn

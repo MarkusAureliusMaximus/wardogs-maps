@@ -36,6 +36,8 @@ def test_status_and_missing_sample():
         assert res.status == 200
         sample = json.loads(res.read())
         assert sample["ok"] is False
+        assert sample["inCoverage"] is False
+        assert sample["relZ"] is None
     finally:
         httpd.shutdown()
 
@@ -126,14 +128,91 @@ def test_sample_merges_store_fields():
         httpd.shutdown()
 
 
-def test_make_context_lists_maps_not_ready():
+def test_sample_ok_false_forces_in_coverage_false():
+    from wardogs_map.terrain import Sample
+
+    class _Store:
+        def sample(self, x, y):
+            return Sample(False, True, None, None)
+
+    class H(StudioHandler):
+        context = _Ctx(
+            stores={"bakurani": _Store()},
+            status={"maps": {"bakurani": {"ready": False}}},
+        )
+
+    httpd = _serve(H)
+    try:
+        conn = HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+        conn.request("GET", "/api/sample?map=bakurani&x=81.2&y=74.6")
+        res = conn.getresponse()
+        assert res.status == 200
+        sample = json.loads(res.read())
+        assert sample["ok"] is False
+        assert sample["inCoverage"] is False
+        assert sample["relZ"] is None
+    finally:
+        httpd.shutdown()
+
+
+def test_make_context_lists_maps_not_ready(tmp_path, monkeypatch):
+    from wardogs_map import paths
     from wardogs_map.httpapp import make_context
 
+    monkeypatch.setattr(paths, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(paths, "BAKED_DIR", tmp_path / "baked")
     ctx = make_context()
     assert ctx.stores == {}
     assert ctx.status["maps"]["bakurani"]["ready"] is False
     assert ctx.status["maps"]["ozeti"]["ready"] is False
     assert ctx.status["maps"]["zestafona"]["ready"] is False
+
+
+def test_make_context_skips_chunk_outside_map_dir(tmp_path, monkeypatch):
+    import hashlib
+    from wardogs_map import paths
+    from wardogs_map.httpapp import make_context
+
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(paths, "CACHE_DIR", cache)
+    monkeypatch.setattr(paths, "BAKED_DIR", tmp_path / "baked")
+    data = b"secret"
+    terrain = cache / "terrain" / "bakurani"
+    terrain.mkdir(parents=True)
+    secret = cache / "terrain" / "secret.bin"
+    secret.write_bytes(data)
+    (terrain / "manifest.json").write_text(
+        json.dumps(
+            {
+                "chunks": {
+                    "1,2": {
+                        "file": "../secret.bin",
+                        "bytes": len(data),
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    ctx = make_context()
+    assert "bakurani" not in ctx.stores
+    assert secret.read_bytes() == data
+
+
+def test_main_bind_failed_exits(monkeypatch):
+    import pytest
+    import server as server_mod
+
+    monkeypatch.setattr(server_mod, "make_context", lambda: None)
+
+    def boom(*_args, **_kwargs):
+        raise OSError("Address already in use")
+
+    monkeypatch.setattr(server_mod, "ThreadingHTTPServer", boom)
+    monkeypatch.setattr("sys.argv", ["server.py", "--host", "127.0.0.1", "--port", "1"])
+    with pytest.raises(SystemExit, match="bind failed"):
+        server_mod.main()
 
 
 def test_tile_and_overlay_and_traversal(tmp_path, monkeypatch):

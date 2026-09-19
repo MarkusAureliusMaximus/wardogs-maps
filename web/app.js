@@ -102,15 +102,23 @@ function signedMeters(value) {
 function setReadout(sample) {
   state.currentSample = sample || null;
   const el = document.getElementById("readout");
-  const rel = sample && sample.relZ;
-  if (!sample || !sample.ok || rel == null || !Number.isFinite(Number(rel))) {
+  if (!sample) {
+    el.textContent = "";
+    return;
+  }
+  const x = Number(sample.x);
+  const y = Number(sample.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
     el.textContent = "no coverage";
     return;
   }
-  const x = Number(sample.x).toFixed(2);
-  const y = Number(sample.y).toFixed(2);
-  let text =
-    "X " + x + "  Y " + y + "  rel " + signedMeters(rel) + " m";
+  const coords = "X " + x.toFixed(2) + "  Y " + y.toFixed(2);
+  const rel = sample.relZ;
+  if (!sample.ok || rel == null || !Number.isFinite(Number(rel))) {
+    el.textContent = coords + "  rel —";
+    return;
+  }
+  let text = coords + "  rel " + signedMeters(rel) + " m";
   const fromZ = state.fromPin && state.fromPin.relZ;
   if (fromZ != null && Number.isFinite(Number(fromZ))) {
     text += "  ΔZ " + signedMeters(Number(rel) - Number(fromZ)) + " m";
