@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from wardogs_map import paths
+from wardogs_map.cz import randomize_cz
 from wardogs_map.mapspec import list_map_ids, load_map
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
 
@@ -61,6 +62,9 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/sample":
             self._handle_sample(parsed.query)
             return
+        if path == "/api/cz/random":
+            self._handle_cz_random(parsed.query)
+            return
         if path == "/":
             self._send_file(WEB_DIR / "index.html", "text/html; charset=utf-8")
             return
@@ -85,6 +89,14 @@ class StudioHandler(BaseHTTPRequestHandler):
         self.send_error(405)
 
     do_PUT = do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = do_POST
+
+    def _handle_cz_random(self, query: str) -> None:
+        qs = parse_qs(query)
+        map_id = (qs.get("map") or [""])[0]
+        if map_id not in list_map_ids():
+            self.send_error(404)
+            return
+        self._send_json(randomize_cz(load_map(map_id)["bounds"]))
 
     def _handle_sample(self, query: str) -> None:
         qs = parse_qs(query)

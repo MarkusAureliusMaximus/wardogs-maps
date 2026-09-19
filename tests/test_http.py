@@ -227,3 +227,28 @@ def test_index_served():
         res.read()
     finally:
         httpd.shutdown()
+
+
+def test_random_cz_inside_bounds():
+    class H(StudioHandler):
+        context = _Ctx(stores={}, status={"maps": {}})
+
+    httpd = _serve(H)
+    try:
+        conn = HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+        conn.request("GET", "/api/cz/random?map=bakurani")
+        res = conn.getresponse()
+        assert res.status == 200
+        body = json.loads(res.read())
+        from wardogs_map.cz import CZ_GAME_SIZE
+        from wardogs_map.mapspec import load_map
+
+        b = load_map("bakurani")["bounds"]
+        assert body["minX"] >= b["minX"]
+        assert body["minY"] >= b["minY"]
+        assert body["maxX"] <= b["maxX"]
+        assert body["maxY"] <= b["maxY"]
+        assert abs(body["maxX"] - body["minX"] - CZ_GAME_SIZE) < 1e-9
+        assert abs(body["maxY"] - body["minY"] - CZ_GAME_SIZE) < 1e-9
+    finally:
+        httpd.shutdown()

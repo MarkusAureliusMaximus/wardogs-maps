@@ -66,6 +66,21 @@ button.active {
   mix-blend-mode: multiply;
 }
 
+.leaflet-div-icon.wd-marker {
+  background: #d7a452;
+  border: 2px solid #0d1012;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.leaflet-div-icon.wd-marker-tower {
+  border-radius: 2px;
+}
+
+.wd-cz {
+  cursor: move;
+}
+
 #readout {
   position: sticky;
   bottom: 0;
