@@ -132,3 +132,61 @@ def test_make_context_lists_maps_not_ready():
     assert ctx.status["maps"]["bakurani"]["ready"] is False
     assert ctx.status["maps"]["ozeti"]["ready"] is False
     assert ctx.status["maps"]["zestafona"]["ready"] is False
+
+
+def test_tile_and_overlay_and_traversal(tmp_path, monkeypatch):
+    from wardogs_map import paths
+
+    monkeypatch.setattr(paths, "CACHE_DIR", tmp_path / "cache")
+    monkeypatch.setattr(paths, "BAKED_DIR", tmp_path / "baked")
+    tile = paths.CACHE_DIR / "tiles" / "bakurani" / "color" / "zoom_0" / "0_0.webp"
+    tile.parent.mkdir(parents=True, exist_ok=True)
+    tile.write_bytes(b"RIFF....WEBP")
+    overlay = paths.BAKED_DIR / "bakurani" / "hillshade" / "zoom_0" / "0_0.png"
+    overlay.parent.mkdir(parents=True, exist_ok=True)
+    overlay.write_bytes(b"\x89PNG")
+    hypo = paths.BAKED_DIR / "bakurani" / "hypsometric" / "zoom_0" / "0_0.png"
+    hypo.parent.mkdir(parents=True, exist_ok=True)
+    hypo.write_bytes(b"\x89PNG")
+    contours = paths.BAKED_DIR / "bakurani" / "contours.geojson"
+    contours.parent.mkdir(parents=True, exist_ok=True)
+    contours.write_text('{"type":"FeatureCollection","features":[]}', encoding="utf-8")
+
+    class H(StudioHandler):
+        context = _Ctx(stores={}, status={"maps": {}})
+
+    httpd = _serve(H)
+    try:
+        port = httpd.server_address[1]
+        conn = HTTPConnection("127.0.0.1", port, timeout=5)
+
+        conn.request("GET", "/tiles/bakurani/color/0/0/0.webp")
+        res = conn.getresponse()
+        assert res.status == 200
+        assert res.getheader("Content-Type") == "image/webp"
+        assert res.read() == b"RIFF....WEBP"
+
+        conn.request("GET", "/overlay/bakurani/hillshade/0/0/0.png")
+        res = conn.getresponse()
+        assert res.status == 200
+        assert res.getheader("Content-Type") == "image/png"
+        assert res.read() == b"\x89PNG"
+
+        conn.request("GET", "/overlay/bakurani/hypsometric/0/0/0.png")
+        res = conn.getresponse()
+        assert res.status == 200
+        assert res.getheader("Content-Type") == "image/png"
+        assert res.read() == b"\x89PNG"
+
+        conn.request("GET", "/overlay/bakurani/contours.geojson")
+        res = conn.getresponse()
+        assert res.status == 200
+        assert res.getheader("Content-Type") == "application/json"
+        res.read()
+
+        conn.request("GET", "/tiles/bakurani/color/0/../0/0.webp")
+        res = conn.getresponse()
+        assert res.status == 404
+        res.read()
+    finally:
+        httpd.shutdown()

@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
+from wardogs_map import paths
 from wardogs_map.mapspec import list_map_ids
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
 
@@ -49,6 +50,12 @@ class StudioHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/maps/"):
             self._send_maps(path)
+            return
+        if path.startswith("/tiles/"):
+            self._send_tiles(path)
+            return
+        if path.startswith("/overlay/"):
+            self._send_overlay(path)
             return
         self.send_error(404)
 
@@ -112,6 +119,56 @@ class StudioHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         self._send_file(target, "application/json")
+
+    def _send_under(self, root: Path, relative: Path, content_type: str) -> None:
+        if relative.is_absolute() or ".." in relative.parts:
+            self.send_error(404)
+            return
+        base = root.resolve()
+        target = (root / relative).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            self.send_error(404)
+            return
+        self._send_file(target, content_type)
+
+    def _send_tiles(self, path: str) -> None:
+        # /tiles/{map}/{style}/{z}/{x}/{y}.webp
+        parts = path.strip("/").split("/")
+        if len(parts) != 6 or parts[0] != "tiles":
+            self.send_error(404)
+            return
+        map_id, style, z, x, y_name = parts[1:]
+        if not y_name.endswith(".webp"):
+            self.send_error(404)
+            return
+        y = y_name[: -len(".webp")]
+        relative = Path("tiles") / map_id / style / f"zoom_{z}" / f"{x}_{y}.webp"
+        self._send_under(paths.CACHE_DIR, relative, "image/webp")
+
+    def _send_overlay(self, path: str) -> None:
+        # /overlay/{map}/contours.geojson
+        # /overlay/{map}/{hillshade|hypsometric}/{z}/{x}/{y}.png
+        parts = path.strip("/").split("/")
+        if len(parts) < 3 or parts[0] != "overlay":
+            self.send_error(404)
+            return
+        map_id = parts[1]
+        if len(parts) == 3 and parts[2] == "contours.geojson":
+            relative = Path(map_id) / "contours.geojson"
+            self._send_under(paths.BAKED_DIR, relative, "application/json")
+            return
+        if len(parts) == 6 and parts[2] in ("hillshade", "hypsometric"):
+            layer, z, x, y_name = parts[2:]
+            if not y_name.endswith(".png"):
+                self.send_error(404)
+                return
+            y = y_name[: -len(".png")]
+            relative = Path(map_id) / layer / f"zoom_{z}" / f"{x}_{y}.png"
+            self._send_under(paths.BAKED_DIR, relative, "image/png")
+            return
+        self.send_error(404)
 
     def _send_json(self, payload) -> None:
         body = json.dumps(payload).encode("utf-8")
