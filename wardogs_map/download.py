@@ -8,6 +8,9 @@ from pathlib import Path
 
 from wardogs_map import paths
 from wardogs_map.height import world_z
+from wardogs_map.mapspec import load_map
+from wardogs_map.overlays import bake_map
+from wardogs_map.terrain import TerrainStore
 
 ASSETS_BASE = "https://assets.wardogs-artillery.com/releases/assets-v1"
 MAX_ZOOM = 7
@@ -105,9 +108,10 @@ def prepare_map(map_id: str) -> bool:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     chunks = manifest.get("chunks") or {}
     verified_entries: list[dict] = []
+    verified_bins: dict[str, bytes] = {}
     fail_count = 0
 
-    for _key, entry in chunks.items():
+    for key, entry in chunks.items():
         rel = entry["file"]
         chunk_url = urllib.parse.urljoin(manifest_url, rel)
         chunk_path = cache_dir / "terrain" / map_id / rel
@@ -119,6 +123,7 @@ def prepare_map(map_id: str) -> bool:
         )
         if ok:
             verified_entries.append(entry)
+            verified_bins[key] = chunk_path.read_bytes()
         else:
             fail_count += 1
             if chunk_path.exists():
@@ -133,12 +138,13 @@ def prepare_map(map_id: str) -> bool:
         zs.append(world_z(manifest, float(entry["minLocalZ"])))
         zs.append(world_z(manifest, float(entry["maxLocalZ"])))
 
+    map_min = min(zs)
     stats_path = baked_dir / map_id / "height-stats.json"
     stats_path.parent.mkdir(parents=True, exist_ok=True)
     stats_path.write_text(
         json.dumps(
             {
-                "mapMinWorldZ": min(zs),
+                "mapMinWorldZ": map_min,
                 "mapMaxWorldZ": max(zs),
             },
             indent=2,
@@ -146,6 +152,17 @@ def prepare_map(map_id: str) -> bool:
         + "\n",
         encoding="utf-8",
     )
+
+    try:
+        spec = load_map(map_id)
+        store = TerrainStore(manifest, verified_bins, map_min_world_z=map_min)
+        if not bake_map(map_id, store, spec):
+            return False
+    except Exception as exc:
+        print(f"{map_id} bake fail {exc}", flush=True)
+        ready = baked_dir / map_id / "READY"
+        ready.unlink(missing_ok=True)
+        return False
     return True
 
 
