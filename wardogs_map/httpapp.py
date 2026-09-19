@@ -9,8 +9,10 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from wardogs_map import paths
 from wardogs_map.cz import randomize_cz
+from wardogs_map.download import verify_chunk
 from wardogs_map.mapspec import list_map_ids, load_map
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
+from wardogs_map.terrain import TerrainStore
 
 _CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
@@ -36,10 +38,39 @@ class StudioContext:
 
 
 def make_context() -> StudioContext:
-    return StudioContext(
-        stores={},
-        status={"maps": {map_id: {"ready": False} for map_id in list_map_ids()}},
-    )
+    stores: dict = {}
+    status_maps: dict = {}
+    for map_id in list_map_ids():
+        ready = (paths.BAKED_DIR / map_id / "READY").is_file()
+        status_maps[map_id] = {"ready": ready}
+        manifest_path = paths.CACHE_DIR / "terrain" / map_id / "manifest.json"
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        verified_bins: dict[str, bytes] = {}
+        for key, entry in (manifest.get("chunks") or {}).items():
+            chunk_path = paths.CACHE_DIR / "terrain" / map_id / entry["file"]
+            if verify_chunk(
+                chunk_path,
+                bytes_expected=int(entry["bytes"]),
+                sha256_hex=str(entry["sha256"]),
+            ):
+                verified_bins[key] = chunk_path.read_bytes()
+        if verified_bins:
+            map_min: float | None = None
+            stats_path = paths.BAKED_DIR / map_id / "height-stats.json"
+            if stats_path.is_file():
+                try:
+                    stats = json.loads(stats_path.read_text(encoding="utf-8"))
+                    if "mapMinWorldZ" in stats:
+                        map_min = float(stats["mapMinWorldZ"])
+                except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                    map_min = None
+            stores[map_id] = TerrainStore(manifest, verified_bins, map_min_world_z=map_min)
+    return StudioContext(stores=stores, status={"maps": status_maps})
 
 
 class StudioHandler(BaseHTTPRequestHandler):
