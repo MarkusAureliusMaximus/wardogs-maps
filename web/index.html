@@ -22,10 +22,12 @@
       <button type="button" data-layer="contours">Contours</button>
       <button type="button" data-layer="markers" class="active">Markers</button>
       <button type="button" data-layer="cz" class="active">CZ</button>
+      <button type="button" data-layer="grid">Grid</button>
       <button type="button" data-action="randomize-cz">Randomize CZ</button>
       <button type="button" data-action="from">From</button>
       <button type="button" data-action="clear-from">Clear From</button>
       <button type="button" data-action="measure">Measure</button>
+      <button type="button" data-action="copy">Copy XY</button>
       <label class="exag">Height
         <input id="exag" type="range" min="1" max="4" step="0.5" value="1">
         <span id="exag-val">×1 true</span>
@@ -36,6 +38,7 @@
   </header>
   <div id="map"></div>
   <canvas id="table3d"></canvas>
+  <div id="legend">Tower · Valkyra · Manticore · Lonestar · Vendor · 1 km grid</div>
   <div id="readout"></div>
   <script src="/vendor/leaflet.js"></script>
   <script src="/vendor/three.min.js"></script>

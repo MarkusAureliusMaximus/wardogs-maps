@@ -226,8 +226,9 @@
       const gx = Number(m.x) / mpu;
       const gy = Number(m.y) / mpu;
       const p = gameToWorld(grid, gx, gy);
-      const color = pinColor(m.icon);
-      const isTower = m.icon === "tower";
+      const kind = m.icon;
+      const color = pinColor(kind);
+      const isTower = kind === "tower";
       const stemH = isTower ? 2.4 : 1.8;
       const stem = new THREE.Mesh(
         new THREE.CylinderGeometry(isTower ? 0.18 : 0.14, isTower ? 0.22 : 0.16, stemH, 8),
@@ -245,7 +246,32 @@
       head.position.set(p.x, p.y + stemH + 0.35, p.z);
       scene.add(head);
       pins.push(head);
+      if (isTower || kind === "valkyra" || kind === "manticore" || kind === "lonestar") {
+        const sprite = makeLabelSprite(m.label || kind, color);
+        sprite.position.set(p.x, p.y + stemH + 1.6, p.z);
+        scene.add(sprite);
+        pins.push(sprite);
+      }
     });
+  }
+
+  function makeLabelSprite(text, color) {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 64;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "rgba(13,16,18,0.7)";
+    ctx.fillRect(0, 0, 256, 64);
+    ctx.fillStyle = "#" + color.toString(16).padStart(6, "0");
+    ctx.font = "bold 28px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(String(text), 128, 32);
+    const tex = new THREE.CanvasTexture(c);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(8, 2, 1);
+    return sprite;
   }
 
   function refreshPins() {

@@ -165,6 +165,44 @@ label.exag input {
   min-width: 4.5rem;
 }
 
+#legend {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 3.4rem;
+  z-index: 900;
+  font-size: 0.75rem;
+  color: #d7e0d4;
+  text-shadow: 0 1px 2px #000;
+  pointer-events: none;
+}
+
+.grid-label {
+  background: transparent;
+  border: 0;
+  color: #e8c14a;
+  font: 700 11px ui-monospace, monospace;
+  box-shadow: none;
+}
+
+.grid-label::before {
+  display: none;
+}
+
+.wd-scale {
+  margin: 0 0 0.4rem 0.4rem;
+  color: #e8ece8;
+  font: 11px ui-monospace, monospace;
+  text-shadow: 0 1px 2px #000;
+}
+
+.wd-scale i {
+  display: block;
+  height: 4px;
+  background: #e8ece8;
+  border-left: 2px solid #e8ece8;
+  border-right: 2px solid #e8ece8;
+}
+
 #readout {
   position: sticky;
   bottom: 0;

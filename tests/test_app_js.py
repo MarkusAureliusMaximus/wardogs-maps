@@ -15,6 +15,13 @@ def test_cz_is_two_km_in_game_units():
     assert "const CZ_GAME_SIZE = 20.0" in src
 
 
+def test_grid_and_copy_and_prefs():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "addKmGrid" in src
+    assert 'action === "copy"' in src
+    assert "wardogs-maps-prefs" in src
+
+
 def test_measure_tool_present():
     src = APP_JS.read_text(encoding="utf-8")
     assert 'action === "measure"' in src

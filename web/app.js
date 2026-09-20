@@ -15,6 +15,7 @@ const state = {
     contours: false,
     markers: true,
     cz: true,
+    grid: false,
   },
   tileLayer: null,
   hillshadeLayer: null,
@@ -22,6 +23,7 @@ const state = {
   contoursLayer: null,
   contourLabels: null,
   markersLayer: null,
+  gridLayer: null,
   czRect: null,
   sampleMarker: null,
   fromPin: null,
@@ -31,6 +33,7 @@ const state = {
   measureA: null,
   measureB: null,
   measureLine: null,
+  czStats: null,
 };
 
 function gameLatLng(x, y) {
@@ -132,6 +135,14 @@ function setReadout(sample) {
   if (state.measureA && state.measureB) {
     text += measureText(state.measureA, state.measureB);
   }
+  if (state.czStats && state.czStats.ok) {
+    text +=
+      "  CZ " +
+      signedMeters(state.czStats.min) +
+      "–" +
+      signedMeters(state.czStats.max) +
+      " m";
+  }
   el.textContent = text;
 }
 
@@ -188,6 +199,9 @@ function restackOverlays() {
   }
   if (state.layers.markers && state.markersLayer) {
     state.markersLayer.bringToFront();
+  }
+  if (state.layers.grid && state.gridLayer) {
+    state.gridLayer.bringToFront();
   }
   if (state.layers.cz && state.czRect) {
     state.czRect.bringToFront();
@@ -488,6 +502,7 @@ function enableCzDrag(rect) {
       state.skipClick = true;
     }
     syncCz3d();
+    refreshCzStats();
   }
 
   el.addEventListener("pointerdown", onDown);
@@ -529,6 +544,171 @@ function addCz() {
     rect.addTo(state.map);
   }
   syncCz3d();
+  refreshCzStats();
+}
+
+async function refreshCzStats() {
+  if (!state.czRect || !state.mapId) {
+    return;
+  }
+  const b = state.czRect.getBounds();
+  const url =
+    "/api/cz/stats?map=" +
+    encodeURIComponent(state.mapId) +
+    "&minX=" +
+    b.getWest() +
+    "&minY=" +
+    b.getSouth() +
+    "&maxX=" +
+    b.getEast() +
+    "&maxY=" +
+    b.getNorth();
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      return;
+    }
+    state.czStats = await res.json();
+    if (state.currentSample) {
+      setReadout(state.currentSample);
+    }
+  } catch (_err) {
+    return;
+  }
+}
+
+function addKmGrid() {
+  if (state.gridLayer) {
+    state.map.removeLayer(state.gridLayer);
+    state.gridLayer = null;
+  }
+  if (!state.spec || !state.layers.grid) {
+    return;
+  }
+  const tb = state.spec.tileBounds;
+  const step = 10;
+  const group = L.layerGroup();
+  const style = { color: "#d7e0d4", weight: 1, opacity: 0.28, interactive: false };
+  for (let x = Math.ceil(tb.minX / step) * step; x <= tb.maxX; x += step) {
+    group.addLayer(
+      L.polyline(
+        [gameLatLng(x, tb.minY), gameLatLng(x, tb.maxY)],
+        style
+      )
+    );
+  }
+  for (let y = Math.ceil(tb.minY / step) * step; y <= tb.maxY; y += step) {
+    group.addLayer(
+      L.polyline(
+        [gameLatLng(tb.minX, y), gameLatLng(tb.maxX, y)],
+        style
+      )
+    );
+  }
+  const startX = Math.ceil(tb.minX / step) * step;
+  const startY = Math.ceil(tb.minY / step) * step;
+  for (let x = startX, col = 0; x < tb.maxX && col < 26; x += step, col += 1) {
+    const letter = String.fromCharCode(65 + col);
+    group.addLayer(
+      L.tooltip({ permanent: true, direction: "center", className: "grid-label", opacity: 0.85 })
+        .setLatLng(gameLatLng(x + 5, tb.maxY - 4))
+        .setContent(letter)
+    );
+  }
+  for (let y = startY, row = 1; y < tb.maxY; y += step, row += 1) {
+    group.addLayer(
+      L.tooltip({ permanent: true, direction: "center", className: "grid-label", opacity: 0.85 })
+        .setLatLng(gameLatLng(tb.minX + 4, y + 5))
+        .setContent(String(row))
+    );
+  }
+  state.gridLayer = group;
+  group.addTo(state.map);
+}
+
+function addScaleBar(map) {
+  const box = L.control({ position: "bottomleft" });
+  box.onAdd = function () {
+    const el = L.DomUtil.create("div", "wd-scale");
+    el.innerHTML = "<i></i><span>1 km</span>";
+    box._el = el;
+    return el;
+  };
+  box.addTo(map);
+  function update() {
+    if (!box._el) {
+      return;
+    }
+    const a = map.latLngToContainerPoint(gameLatLng(0, 0));
+    const b = map.latLngToContainerPoint(gameLatLng(10, 0));
+    const px = Math.max(24, Math.abs(b.x - a.x));
+    const bar = box._el.querySelector("i");
+    if (bar) {
+      bar.style.width = px + "px";
+    }
+  }
+  map.on("zoomend resize", update);
+  setTimeout(update, 0);
+}
+
+function copyCoords() {
+  const s = state.currentSample;
+  if (!s || !Number.isFinite(Number(s.x))) {
+    return;
+  }
+  const text = "X " + Number(s.x).toFixed(2) + "  Y " + Number(s.y).toFixed(2);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text);
+  }
+}
+
+const PREFS_KEY = "wardogs-maps-prefs";
+
+function savePrefs() {
+  try {
+    const exag = document.getElementById("exag");
+    localStorage.setItem(
+      PREFS_KEY,
+      JSON.stringify({
+        mapId: state.mapId,
+        tilesStyle: state.tilesStyle,
+        layers: state.layers,
+        exag: exag ? exag.value : "1",
+      })
+    );
+  } catch (_err) {}
+}
+
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) {
+      return DEFAULT_MAP;
+    }
+    const p = JSON.parse(raw);
+    if (p.tilesStyle) {
+      state.tilesStyle = p.tilesStyle;
+    }
+    if (p.layers) {
+      Object.keys(state.layers).forEach(function (k) {
+        if (typeof p.layers[k] === "boolean") {
+          state.layers[k] = p.layers[k];
+        }
+      });
+    }
+    const exag = document.getElementById("exag");
+    const exagVal = document.getElementById("exag-val");
+    if (exag && p.exag) {
+      exag.value = p.exag;
+      if (exagVal) {
+        const n = Number(p.exag);
+        exagVal.textContent = n === 1 ? "×1 true" : "×" + n;
+      }
+    }
+    return p.mapId || DEFAULT_MAP;
+  } catch (_err) {
+    return DEFAULT_MAP;
+  }
 }
 
 function syncCz3d() {
@@ -558,6 +738,7 @@ async function randomizeCz() {
     const square = await res.json();
     state.czRect.setBounds(czBoundsFromSquare(square));
     syncCz3d();
+    refreshCzStats();
   } catch (_err) {
     return;
   }
@@ -656,6 +837,7 @@ function initLeaflet(spec) {
   state.contoursLayer = null;
   state.contourLabels = null;
   state.markersLayer = null;
+  state.gridLayer = null;
   state.czRect = null;
   state.sampleMarker = null;
   state.fromPin = null;
@@ -685,8 +867,11 @@ function initLeaflet(spec) {
   addContours();
   addMarkersAndPolygons();
   addCz();
+  addKmGrid();
+  addScaleBar(map);
   map.on("click", onMapClick);
   map.on("zoomend", refreshContourLabels);
+  map.on("zoomend moveend", savePrefs);
 }
 
 async function loadMap(mapId) {
@@ -704,6 +889,7 @@ async function loadMap(mapId) {
   document.querySelectorAll("[data-map]").forEach(function (btn) {
     btn.classList.toggle("active", btn.getAttribute("data-map") === mapId);
   });
+  savePrefs();
 }
 
 function syncChips() {
@@ -766,6 +952,7 @@ function bindUi() {
         addBaseTiles();
       }
       syncChips();
+      savePrefs();
     });
   });
   document.querySelectorAll("[data-layer]").forEach(function (btn) {
@@ -801,9 +988,12 @@ function bindUi() {
         } else {
           state.map.removeLayer(state.czRect);
         }
+      } else if (key === "grid") {
+        addKmGrid();
       }
       restackOverlays();
       syncChips();
+      savePrefs();
     });
   });
   document.querySelectorAll("[data-view]").forEach(function (btn) {
@@ -827,6 +1017,8 @@ function bindUi() {
           clearMeasure();
         }
         btn.classList.toggle("active", state.measure);
+      } else if (action === "copy") {
+        copyCoords();
       }
     });
   });
@@ -841,6 +1033,7 @@ function bindUi() {
       if (window.WardogsTable3D) {
         window.WardogsTable3D.setExaggeration(n);
       }
+      savePrefs();
     });
   }
   window.addEventListener("resize", function () {
@@ -851,7 +1044,8 @@ function bindUi() {
 }
 
 bindUi();
+const startMap = loadPrefs();
 syncChips();
-loadMap(DEFAULT_MAP).catch(function () {
+loadMap(startMap).catch(function () {
   setReadout({ ok: false });
 });

@@ -8,7 +8,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from wardogs_map import paths
-from wardogs_map.cz import randomize_cz
+from wardogs_map.cz import randomize_cz, zone_height_stats
 from wardogs_map.download import jailed_chunk_path, verify_chunk
 from wardogs_map.heightgrid import DEFAULT_N, load_or_build_heightgrid
 from wardogs_map.table_assets import stitch_table_color, table_color_path
@@ -110,6 +110,9 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/cz/random":
             self._handle_cz_random(parsed.query)
             return
+        if path == "/api/cz/stats":
+            self._handle_cz_stats(parsed.query)
+            return
         if path == "/api/heightgrid":
             self._handle_heightgrid(parsed.query)
             return
@@ -154,6 +157,26 @@ class StudioHandler(BaseHTTPRequestHandler):
         spec = load_map(map_id)
         stitch_table_color(map_id)
         self._send_json(load_or_build_heightgrid(store, spec, n=n))
+
+    def _handle_cz_stats(self, query: str) -> None:
+        qs = parse_qs(query)
+        map_id = (qs.get("map") or [""])[0]
+        stores = self.context.stores if self.context is not None else {}
+        store = stores.get(map_id)
+        try:
+            square = {
+                "minX": float((qs.get("minX") or [""])[0]),
+                "minY": float((qs.get("minY") or [""])[0]),
+                "maxX": float((qs.get("maxX") or [""])[0]),
+                "maxY": float((qs.get("maxY") or [""])[0]),
+            }
+        except (TypeError, ValueError):
+            self.send_error(400)
+            return
+        if store is None:
+            self.send_error(404)
+            return
+        self._send_json(zone_height_stats(store, square))
 
     def _handle_cz_random(self, query: str) -> None:
         qs = parse_qs(query)
