@@ -15,6 +15,16 @@ def test_cz_is_two_km_in_game_units():
     assert "const CZ_GAME_SIZE = 20.0" in src
 
 
+def test_profile_pins_and_share():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "fetchProfile" in src
+    assert "addPinHere" in src
+    assert "updateShareUrl" in src
+    assert "parseShare" in src
+    assert 'action === "pin"' in src
+    assert 'action === "share"' in src
+
+
 def test_grid_and_copy_and_prefs():
     src = APP_JS.read_text(encoding="utf-8")
     assert "addKmGrid" in src

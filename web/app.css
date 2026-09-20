@@ -165,6 +165,28 @@ label.exag input {
   min-width: 4.5rem;
 }
 
+#profile {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 3.4rem;
+  width: min(320px, 46vw);
+  height: 56px;
+  z-index: 900;
+  background: rgba(13, 16, 18, 0.72);
+  border: 1px solid #3a4448;
+  pointer-events: none;
+}
+
+#profile[hidden] {
+  display: none;
+}
+
+.wd-pin-mine {
+  background: #7ecbff;
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+
 #legend {
   position: absolute;
   left: 0.6rem;

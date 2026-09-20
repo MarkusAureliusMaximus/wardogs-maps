@@ -13,6 +13,7 @@ from wardogs_map.download import jailed_chunk_path, verify_chunk
 from wardogs_map.heightgrid import DEFAULT_N, load_or_build_heightgrid
 from wardogs_map.table_assets import stitch_table_color, table_color_path
 from wardogs_map.mapspec import list_map_ids, load_map
+from wardogs_map.profile import elevation_profile
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
 from wardogs_map.terrain import TerrainStore
 
@@ -116,6 +117,9 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/heightgrid":
             self._handle_heightgrid(parsed.query)
             return
+        if path == "/api/profile":
+            self._handle_profile(parsed.query)
+            return
         if path == "/":
             self._send_file(WEB_DIR / "index.html", "text/html; charset=utf-8")
             return
@@ -140,6 +144,29 @@ class StudioHandler(BaseHTTPRequestHandler):
         self.send_error(405)
 
     do_PUT = do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = do_POST
+
+    def _handle_profile(self, query: str) -> None:
+        qs = parse_qs(query)
+        map_id = (qs.get("map") or [""])[0]
+        stores = self.context.stores if self.context is not None else {}
+        store = stores.get(map_id)
+        try:
+            x0 = float((qs.get("x0") or [""])[0])
+            y0 = float((qs.get("y0") or [""])[0])
+            x1 = float((qs.get("x1") or [""])[0])
+            y1 = float((qs.get("y1") or [""])[0])
+        except (TypeError, ValueError):
+            self.send_error(400)
+            return
+        if store is None:
+            self.send_error(404)
+            return
+        n_raw = (qs.get("n") or ["80"])[0]
+        try:
+            n = int(n_raw)
+        except (TypeError, ValueError):
+            n = 80
+        self._send_json(elevation_profile(store, x0, y0, x1, y1, n=n))
 
     def _handle_heightgrid(self, query: str) -> None:
         qs = parse_qs(query)

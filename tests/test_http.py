@@ -73,6 +73,21 @@ def test_maps_json_and_method_not_allowed():
         httpd.shutdown()
 
 
+def test_profile_404_without_store():
+    class H(StudioHandler):
+        context = _Ctx(stores={}, status={"maps": {}})
+
+    httpd = _serve(H)
+    try:
+        conn = HTTPConnection("127.0.0.1", httpd.server_address[1], timeout=5)
+        conn.request("GET", "/api/profile?map=bakurani&x0=1&y0=1&x1=2&y1=1")
+        res = conn.getresponse()
+        assert res.status == 404
+        res.read()
+    finally:
+        httpd.shutdown()
+
+
 def test_heightgrid_404_without_store():
     class H(StudioHandler):
         context = _Ctx(stores={}, status={"maps": {}})

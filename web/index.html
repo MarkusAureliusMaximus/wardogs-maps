@@ -27,7 +27,9 @@
       <button type="button" data-action="from">From</button>
       <button type="button" data-action="clear-from">Clear From</button>
       <button type="button" data-action="measure">Measure</button>
+      <button type="button" data-action="pin">Pin</button>
       <button type="button" data-action="copy">Copy XY</button>
+      <button type="button" data-action="share">Share URL</button>
       <label class="exag">Height
         <input id="exag" type="range" min="1" max="4" step="0.5" value="1">
         <span id="exag-val">×1 true</span>
@@ -38,7 +40,8 @@
   </header>
   <div id="map"></div>
   <canvas id="table3d"></canvas>
-  <div id="legend">Tower · Valkyra · Manticore · Lonestar · Vendor · 1 km grid</div>
+  <div id="legend">Tower · Valkyra · Manticore · Lonestar · Vendor · 1 km grid · your pins</div>
+  <svg id="profile" viewBox="0 0 320 56" aria-label="Elevation profile" hidden></svg>
   <div id="readout"></div>
   <script src="/vendor/leaflet.js"></script>
   <script src="/vendor/three.min.js"></script>

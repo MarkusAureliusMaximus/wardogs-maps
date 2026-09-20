@@ -34,6 +34,8 @@ const state = {
   measureB: null,
   measureLine: null,
   czStats: null,
+  pinLayer: null,
+  pendingShare: null,
 };
 
 function gameLatLng(x, y) {
@@ -577,6 +579,119 @@ async function refreshCzStats() {
   }
 }
 
+const PINS_KEY = "wardogs-maps-pins";
+
+function readPins() {
+  try {
+    const list = JSON.parse(localStorage.getItem(PINS_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function writePins(list) {
+  try {
+    localStorage.setItem(PINS_KEY, JSON.stringify(list));
+  } catch (_err) {}
+}
+
+function addPersonalPins() {
+  if (state.pinLayer && state.map) {
+    state.map.removeLayer(state.pinLayer);
+  }
+  state.pinLayer = null;
+  if (!state.map) {
+    return;
+  }
+  const group = L.layerGroup();
+  readPins()
+    .filter(function (p) {
+      return p.mapId === state.mapId;
+    })
+    .forEach(function (pin) {
+      const marker = L.marker(gameLatLng(pin.x, pin.y), {
+        title: pin.label || "pin",
+        zIndexOffset: 800,
+        icon: communityMarkerIcon("mine", pin.label || "pin"),
+      });
+      marker.on("click", function (ev) {
+        L.DomEvent.stop(ev);
+        removePin(pin.id);
+      });
+      group.addLayer(marker);
+    });
+  state.pinLayer = group;
+  group.addTo(state.map);
+}
+
+function addPinHere() {
+  const s = state.currentSample;
+  if (!s || !Number.isFinite(Number(s.x))) {
+    return;
+  }
+  const list = readPins();
+  list.push({
+    id: Date.now().toString(36),
+    mapId: state.mapId,
+    x: Number(s.x),
+    y: Number(s.y),
+    relZ: s.relZ,
+    label: "X " + Number(s.x).toFixed(1) + " Y " + Number(s.y).toFixed(1),
+  });
+  writePins(list);
+  addPersonalPins();
+}
+
+function removePin(id) {
+  writePins(
+    readPins().filter(function (p) {
+      return p.id !== id;
+    })
+  );
+  addPersonalPins();
+}
+
+function parseShare() {
+  const q = new URLSearchParams(window.location.search);
+  const out = {};
+  if (q.get("map")) {
+    out.map = q.get("map");
+  }
+  const x = Number(q.get("x"));
+  const y = Number(q.get("y"));
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    out.x = x;
+    out.y = y;
+  }
+  const z = Number(q.get("z"));
+  if (Number.isFinite(z)) {
+    out.z = z;
+  }
+  return out;
+}
+
+function updateShareUrl() {
+  const p = new URLSearchParams();
+  p.set("map", state.mapId);
+  if (state.currentSample && Number.isFinite(Number(state.currentSample.x))) {
+    p.set("x", Number(state.currentSample.x).toFixed(2));
+    p.set("y", Number(state.currentSample.y).toFixed(2));
+  }
+  if (state.map) {
+    p.set("z", String(state.map.getZoom()));
+  }
+  history.replaceState(null, "", "?" + p.toString());
+}
+
+function copyShareUrl() {
+  updateShareUrl();
+  const href = window.location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(href);
+  }
+}
+
 function addKmGrid() {
   if (state.gridLayer) {
     state.map.removeLayer(state.gridLayer);
@@ -772,6 +887,7 @@ async function sampleAt(x, y, latlng) {
     const res = await fetch(url);
     const sample = await res.json();
     setReadout(sample);
+    updateShareUrl();
   } catch (_err) {
     setReadout({ ok: false, x: x, y: y, relZ: null });
   }
@@ -784,6 +900,7 @@ function clearMeasure() {
     state.map.removeLayer(state.measureLine);
   }
   state.measureLine = null;
+  hideProfile();
 }
 
 function onMeasurePoint(x, y) {
@@ -806,6 +923,85 @@ function onMeasurePoint(x, y) {
   } else {
     const el = document.getElementById("readout");
     el.textContent = "X " + x.toFixed(2) + "  Y " + y.toFixed(2) + measureText(state.measureA, pt);
+  }
+  fetchProfile(state.measureA, pt);
+}
+
+function hideProfile() {
+  const el = document.getElementById("profile");
+  if (el) {
+    el.setAttribute("hidden", "");
+    el.innerHTML = "";
+  }
+}
+
+function drawProfile(data) {
+  const el = document.getElementById("profile");
+  if (!el) {
+    return;
+  }
+  if (!data || !data.ok || !data.points) {
+    hideProfile();
+    return;
+  }
+  const pts = data.points.filter(function (p) {
+    return p.relZ != null;
+  });
+  if (pts.length < 2) {
+    hideProfile();
+    return;
+  }
+  const w = 320;
+  const h = 56;
+  const pad = 4;
+  const lo = data.min;
+  const hi = data.max;
+  const span = Math.max(1, hi - lo);
+  const maxDist = data.lengthM || pts[pts.length - 1].dist || 1;
+  let d = "";
+  pts.forEach(function (p, i) {
+    const x = pad + (p.dist / maxDist) * (w - pad * 2);
+    const y = h - pad - ((p.relZ - lo) / span) * (h - pad * 2);
+    d += (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1);
+  });
+  el.removeAttribute("hidden");
+  el.setAttribute("viewBox", "0 0 " + w + " " + h);
+  el.innerHTML =
+    '<path d="' +
+    d +
+    '" fill="none" stroke="#7ecbff" stroke-width="2"/>' +
+    '<text x="6" y="12" fill="#c8d0c8" font-size="10">' +
+    lo.toFixed(0) +
+    "–" +
+    hi.toFixed(0) +
+    " m  Δ" +
+    (data.delta >= 0 ? "+" : "") +
+    data.delta +
+    "</text>";
+}
+
+async function fetchProfile(a, b) {
+  const url =
+    "/api/profile?map=" +
+    encodeURIComponent(state.mapId) +
+    "&x0=" +
+    a.x +
+    "&y0=" +
+    a.y +
+    "&x1=" +
+    b.x +
+    "&y1=" +
+    b.y +
+    "&n=80";
+  try {
+    const res = await fetch(url);
+    if (!res.ok) {
+      hideProfile();
+      return;
+    }
+    drawProfile(await res.json());
+  } catch (_err) {
+    hideProfile();
   }
 }
 
@@ -838,6 +1034,7 @@ function initLeaflet(spec) {
   state.contourLabels = null;
   state.markersLayer = null;
   state.gridLayer = null;
+  state.pinLayer = null;
   state.czRect = null;
   state.sampleMarker = null;
   state.fromPin = null;
@@ -868,6 +1065,7 @@ function initLeaflet(spec) {
   addMarkersAndPolygons();
   addCz();
   addKmGrid();
+  addPersonalPins();
   addScaleBar(map);
   map.on("click", onMapClick);
   map.on("zoomend", refreshContourLabels);
@@ -1019,6 +1217,10 @@ function bindUi() {
         btn.classList.toggle("active", state.measure);
       } else if (action === "copy") {
         copyCoords();
+      } else if (action === "pin") {
+        addPinHere();
+      } else if (action === "share") {
+        copyShareUrl();
       }
     });
   });
@@ -1044,8 +1246,19 @@ function bindUi() {
 }
 
 bindUi();
-const startMap = loadPrefs();
+const share = parseShare();
+const startMap = share.map || loadPrefs();
 syncChips();
-loadMap(startMap).catch(function () {
-  setReadout({ ok: false });
-});
+loadMap(startMap)
+  .then(function () {
+    if (share.z != null && state.map) {
+      state.map.setZoom(share.z);
+    }
+    if (share.x != null && share.y != null) {
+      return sampleAt(share.x, share.y);
+    }
+    return null;
+  })
+  .catch(function () {
+    setReadout({ ok: false });
+  });
