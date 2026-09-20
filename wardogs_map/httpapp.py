@@ -130,7 +130,7 @@ class StudioHandler(BaseHTTPRequestHandler):
             self._send_tiles(path)
             return
         if path.startswith("/overlay/"):
-            self._send_overlay(path)
+            self._send_overlay(path, parsed.query)
             return
         if path.startswith("/web/"):
             self._send_static(WEB_DIR, path[len("/web/") :])
@@ -307,7 +307,7 @@ class StudioHandler(BaseHTTPRequestHandler):
         relative = Path("tiles") / map_id / style / f"zoom_{z}" / f"{x}_{y}.webp"
         self._send_under(paths.CACHE_DIR, relative, "image/webp")
 
-    def _send_overlay(self, path: str) -> None:
+    def _send_overlay(self, path: str, query: str = "") -> None:
         # /overlay/{map}/contours.geojson
         # /overlay/{map}/{hillshade|hypsometric}/{z}/{x}/{y}.png
         parts = path.strip("/").split("/")
@@ -323,8 +323,20 @@ class StudioHandler(BaseHTTPRequestHandler):
             if map_id not in list_map_ids():
                 self.send_error(404)
                 return
-            stitch_table_color(map_id)
-            self._send_file(table_color_path(map_id), "image/jpeg")
+            qs = parse_qs(query)
+            try:
+                zoom = int((qs.get("z") or ["5"])[0])
+            except (TypeError, ValueError):
+                zoom = 5
+            if zoom not in (4, 5):
+                zoom = 5
+            path_out = stitch_table_color(map_id, zoom=zoom)
+            if path_out is None:
+                path_out = stitch_table_color(map_id, zoom=4)
+            if path_out is None:
+                self.send_error(404)
+                return
+            self._send_file(path_out, "image/jpeg")
             return
         if len(parts) == 6 and parts[2] in ("hillshade", "hypsometric"):
             layer, z, x, y_name = parts[2:]

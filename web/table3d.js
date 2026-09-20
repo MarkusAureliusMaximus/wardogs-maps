@@ -36,6 +36,9 @@
   let lastGrid = null;
   let lastSpec = null;
   let lastTexture = null;
+  let lastMarks = null;
+  let measureLine = null;
+  let sampleMesh = null;
   let raycaster = null;
 
   function ensure() {
@@ -190,6 +193,24 @@
     if (String(kind).indexOf("vendor") >= 0) {
       return 0xc47a3a;
     }
+    if (kind === "mine") {
+      return 0x7ecbff;
+    }
+    if (kind === "enemy-fob" || kind === "enemy") {
+      return 0xc4453c;
+    }
+    if (kind === "friendly-fob") {
+      return 0x3a6ea8;
+    }
+    if (kind === "mortar") {
+      return 0x9b59b6;
+    }
+    if (kind === "aa") {
+      return 0x1abc9c;
+    }
+    if (kind === "loot") {
+      return 0xf1c40f;
+    }
     return 0xd7a452;
   }
 
@@ -222,44 +243,113 @@
     };
   }
 
-  function addPins(grid, spec) {
-    clearPins();
-    lastSpec = spec;
-    const mpu = spec.coordinateMetersPerUnit || 100;
-    (spec.markers || []).forEach(function (m) {
-      const gx = Number(m.x) / mpu;
-      const gy = Number(m.y) / mpu;
-      const p = gameToWorld(grid, gx, gy);
-      const kind = m.icon;
-      const color = pinColor(kind);
-      const isTower = kind === "tower";
-      const stemH = isTower ? 2.4 : 1.8;
-      const stem = new THREE.Mesh(
-        new THREE.CylinderGeometry(isTower ? 0.18 : 0.14, isTower ? 0.22 : 0.16, stemH, 8),
-        new THREE.MeshStandardMaterial({ color: color, roughness: 0.45 })
-      );
-      stem.position.set(p.x, p.y + stemH / 2, p.z);
-      scene.add(stem);
-      pins.push(stem);
-      const head = new THREE.Mesh(
-        isTower
-          ? new THREE.BoxGeometry(0.7, 0.7, 0.7)
-          : new THREE.SphereGeometry(0.38, 10, 8),
-        new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.2 })
-      );
-      head.position.set(p.x, p.y + stemH + 0.35, p.z);
-      scene.add(head);
-      pins.push(head);
-      if (isTower || kind === "valkyra" || kind === "manticore" || kind === "lonestar") {
-        const sprite = makeLabelSprite(m.label || kind, color);
-        sprite.position.set(p.x, p.y + stemH + 1.6, p.z);
-        scene.add(sprite);
-        pins.push(sprite);
-      }
-    });
+  function metersToWorld(meters, grid) {
+    return (Number(meters) / spanMeters(grid)) * TABLE;
   }
 
-  function makeLabelSprite(text, color) {
+  function markSize(kind) {
+    if (kind === "enemy-fob" || kind === "friendly-fob") {
+      return 40;
+    }
+    if (kind === "aa" || kind === "mortar") {
+      return 22;
+    }
+    if (kind === "tower") {
+      return 18;
+    }
+    if (kind === "enemy") {
+      return 12;
+    }
+    return 10;
+  }
+
+  function addOneMark(gx, gy, kind, label) {
+    if (!lastGrid) {
+      return;
+    }
+    const p = gameToWorld(lastGrid, gx, gy);
+    const color = pinColor(kind);
+    const meters = markSize(kind);
+    const s = Math.max(metersToWorld(meters, lastGrid), 0.08);
+    const h = s * 1.6;
+    const isFob = String(kind).indexOf("fob") >= 0;
+    const isTower = kind === "tower";
+    const geo = isFob
+      ? new THREE.BoxGeometry(s * 1.6, h, s * 1.6)
+      : isTower
+        ? new THREE.CylinderGeometry(s * 0.35, s * 0.45, h, 8)
+        : new THREE.SphereGeometry(s * 0.55, 10, 8);
+    const meshMark = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.16, roughness: 0.5 })
+    );
+    meshMark.position.set(p.x, p.y + h / 2, p.z);
+    scene.add(meshMark);
+    pins.push(meshMark);
+    if (label) {
+      const sprite = makeLabelSprite(label, color, s * 8);
+      sprite.position.set(p.x, p.y + h + s * 1.2, p.z);
+      scene.add(sprite);
+      pins.push(sprite);
+    }
+  }
+
+  function setMarks(marks) {
+    lastMarks = marks || lastMarks;
+    clearPins();
+    if (measureLine) {
+      scene.remove(measureLine);
+      measureLine.geometry.dispose();
+      measureLine.material.dispose();
+      measureLine = null;
+    }
+    if (sampleMesh) {
+      scene.remove(sampleMesh);
+      sampleMesh.geometry.dispose();
+      sampleMesh.material.dispose();
+      sampleMesh = null;
+    }
+    if (!lastGrid || !lastMarks) {
+      return;
+    }
+    (lastMarks.community || []).forEach(function (m) {
+      addOneMark(m.x, m.y, m.kind, m.label);
+    });
+    (lastMarks.pins || []).forEach(function (m) {
+      addOneMark(m.x, m.y, "mine", m.label);
+    });
+    (lastMarks.intel || []).forEach(function (m) {
+      addOneMark(m.x, m.y, m.kind, m.label);
+    });
+    if (lastMarks.measure && lastMarks.measure.a && lastMarks.measure.b) {
+      const a = gameToWorld(lastGrid, lastMarks.measure.a.x, lastMarks.measure.a.y);
+      const b = gameToWorld(lastGrid, lastMarks.measure.b.x, lastMarks.measure.b.y);
+      const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(a.x, a.y + 0.05, a.z),
+        new THREE.Vector3(b.x, b.y + 0.05, b.z),
+      ]);
+      measureLine = new THREE.Line(
+        geo,
+        new THREE.LineBasicMaterial({ color: 0x7ecbff })
+      );
+      scene.add(measureLine);
+    }
+    if (lastMarks.sample && Number.isFinite(Number(lastMarks.sample.x))) {
+      const p = gameToWorld(lastGrid, Number(lastMarks.sample.x), Number(lastMarks.sample.y));
+      const r = metersToWorld(8, lastGrid);
+      sampleMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(r, 0.06), 12, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      sampleMesh.position.set(p.x, p.y + r, p.z);
+      scene.add(sampleMesh);
+    }
+    if (lastMarks.cz) {
+      setCz(lastMarks.cz);
+    }
+  }
+
+  function makeLabelSprite(text, color, worldW) {
     const c = document.createElement("canvas");
     c.width = 256;
     c.height = 64;
@@ -274,14 +364,13 @@
     const tex = new THREE.CanvasTexture(c);
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(8, 2, 1);
+    const w = worldW || 0.9;
+    sprite.scale.set(w, w * 0.25, 1);
     return sprite;
   }
 
   function refreshPins() {
-    if (lastGrid && lastSpec) {
-      addPins(lastGrid, lastSpec);
-    }
+    setMarks(lastMarks);
   }
 
   function setCz(square) {
@@ -318,15 +407,18 @@
       return;
     }
     const grid = await res.json();
-    const specRes = await fetch("/maps/" + encodeURIComponent(mapId) + ".json");
-    const spec = specRes.ok ? await specRes.json() : { markers: [] };
+    const maxTex = renderer.capabilities.maxTextureSize;
+    const z = maxTex >= 8192 ? 5 : 4;
+    const texUrl = "/overlay/" + encodeURIComponent(mapId) + "/table-color.jpg?z=" + z;
     const texLoader = new THREE.TextureLoader();
     const texture = await new Promise(function (resolve, reject) {
-      texLoader.load(grid.textureUrl, resolve, undefined, reject);
+      texLoader.load(texUrl, resolve, undefined, reject);
     });
     texture.colorSpace = THREE.SRGBColorSpace;
     buildMesh(grid, texture);
-    addPins(grid, spec);
+    if (typeof window.WardogsTable3D.afterLoad === "function") {
+      window.WardogsTable3D.afterLoad();
+    }
   }
 
   function sampleClick(ev) {
@@ -414,6 +506,8 @@
 
   window.WardogsTable3D = {
     onSample: null,
+    afterLoad: null,
+    setMarks: setMarks,
     show: function (mapId) {
       active = true;
       const slider = document.getElementById("exag");

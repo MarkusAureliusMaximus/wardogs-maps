@@ -40,7 +40,7 @@ def build_heightgrid(store: TerrainStore, spec: dict, n: int = DEFAULT_N) -> dic
         "maxX": max_x,
         "minY": min_y,
         "maxY": max_y,
-        "textureUrl": f"/overlay/{map_id}/table-color.jpg",
+        "textureUrl": f"/overlay/{map_id}/table-color.jpg?z=5",
         "heights": heights,
     }
     cache = paths.BAKED_DIR / map_id / f"heightgrid-{n}.json"
@@ -63,7 +63,7 @@ def load_or_build_heightgrid(store: TerrainStore, spec: dict, n: int = DEFAULT_N
         try:
             data = json.loads(cache.read_text(encoding="utf-8"))
             if data.get("n") == n and isinstance(data.get("heights"), list):
-                data["textureUrl"] = f"/overlay/{spec['id']}/table-color.jpg"
+                data["textureUrl"] = f"/overlay/{spec['id']}/table-color.jpg?z=5"
                 return data
         except (OSError, json.JSONDecodeError, TypeError):
             pass

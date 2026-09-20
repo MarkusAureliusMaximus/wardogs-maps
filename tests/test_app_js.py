@@ -15,6 +15,16 @@ def test_cz_is_two_km_in_game_units():
     assert "const CZ_GAME_SIZE = 20.0" in src
 
 
+def test_3d_syncs_all_2d_marks_and_hires_texture():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "collectMarks" in src
+    assert "sync3dOverlays" in src
+    table = (APP_JS.parent / "table3d.js").read_text(encoding="utf-8")
+    assert "table-color.jpg?z=" in table
+    assert "metersToWorld" in table
+    assert "setMarks" in table
+
+
 def test_export_fullscreen_intel_and_north():
     src = APP_JS.read_text(encoding="utf-8")
     assert "exportPng" in src

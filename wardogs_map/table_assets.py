@@ -6,7 +6,8 @@ from PIL import Image
 
 from wardogs_map import paths
 
-TABLE_ZOOM = 4
+TABLE_ZOOM = 5
+FALLBACK_ZOOM = 4
 TILE_PX = 256
 
 
@@ -39,5 +40,6 @@ def stitch_table_color(map_id: str, zoom: int = TABLE_ZOOM, cache_dir: Path | No
     if pasted == 0:
         return None
     out.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(out, "JPEG", quality=86, optimize=True)
+    quality = 80 if zoom >= 5 else 86
+    canvas.save(out, "JPEG", quality=quality, optimize=True)
     return out

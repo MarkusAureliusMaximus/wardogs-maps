@@ -647,6 +647,7 @@ function addPersonalPins() {
     });
   state.pinLayer = group;
   group.addTo(state.map);
+  sync3dOverlays();
 }
 
 function addPinHere() {
@@ -711,7 +712,11 @@ function addIntelLayer() {
     state.map.removeLayer(state.intelLayer);
   }
   state.intelLayer = null;
-  if (!state.map || !state.layers.intel) {
+  if (!state.map) {
+    return;
+  }
+  if (!state.layers.intel) {
+    sync3dOverlays();
     return;
   }
   const group = L.layerGroup();
@@ -735,6 +740,7 @@ function addIntelLayer() {
     });
   state.intelLayer = group;
   group.addTo(state.map);
+  sync3dOverlays();
 }
 
 function addIntelAt(x, y) {
@@ -1021,17 +1027,59 @@ function loadPrefs() {
   }
 }
 
-function syncCz3d() {
-  if (!window.WardogsTable3D || !state.czRect) {
+function collectMarks() {
+  const spec = state.spec || {};
+  const mpu = spec.coordinateMetersPerUnit || 100;
+  const community = (spec.markers || []).map(function (m) {
+    return {
+      x: Number(m.x) / mpu,
+      y: Number(m.y) / mpu,
+      kind: m.icon,
+      label: m.label,
+    };
+  });
+  const pins = readPins()
+    .filter(function (p) {
+      return p.mapId === state.mapId;
+    })
+    .map(function (p) {
+      return { x: p.x, y: p.y, kind: "mine", label: p.label };
+    });
+  const intel = readIntel()
+    .filter(function (p) {
+      return p.mapId === state.mapId && state.layers.intel;
+    })
+    .map(function (p) {
+      return { x: p.x, y: p.y, kind: p.kind, label: p.label };
+    });
+  let cz = null;
+  if (state.layers.cz && state.czRect) {
+    const b = state.czRect.getBounds();
+    cz = { minX: b.getWest(), minY: b.getSouth(), maxX: b.getEast(), maxY: b.getNorth() };
+  }
+  let measure = null;
+  if (state.measureA && state.measureB) {
+    measure = { a: state.measureA, b: state.measureB };
+  }
+  return {
+    community: community,
+    pins: pins,
+    intel: intel,
+    cz: cz,
+    measure: measure,
+    sample: state.currentSample,
+  };
+}
+
+function sync3dOverlays() {
+  if (!window.WardogsTable3D || !window.WardogsTable3D.setMarks) {
     return;
   }
-  const b = state.czRect.getBounds();
-  window.WardogsTable3D.setCz({
-    minX: b.getWest(),
-    minY: b.getSouth(),
-    maxX: b.getEast(),
-    maxY: b.getNorth(),
-  });
+  window.WardogsTable3D.setMarks(collectMarks());
+}
+
+function syncCz3d() {
+  sync3dOverlays();
 }
 
 async function randomizeCz() {
@@ -1083,6 +1131,7 @@ async function sampleAt(x, y, latlng) {
     const sample = await res.json();
     setReadout(sample);
     updateShareUrl();
+    sync3dOverlays();
   } catch (_err) {
     setReadout({ ok: false, x: x, y: y, relZ: null });
   }
@@ -1096,6 +1145,7 @@ function clearMeasure() {
   }
   state.measureLine = null;
   hideProfile();
+  sync3dOverlays();
 }
 
 function onMeasurePoint(x, y) {
@@ -1335,6 +1385,7 @@ function bindUi() {
     window.WardogsTable3D.onSample = function (x, y) {
       sampleAt(x, y);
     };
+    window.WardogsTable3D.afterLoad = sync3dOverlays;
   }
   document.querySelectorAll("[data-map]").forEach(function (btn) {
     btn.addEventListener("click", function () {

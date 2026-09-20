@@ -54,7 +54,7 @@ def test_heightgrid_size_and_known_cell(tmp_path, monkeypatch):
     grid = build_heightgrid(store, spec, n=16)
     assert grid["n"] == 16
     assert len(grid["heights"]) == 16 * 16
-    assert grid["textureUrl"].endswith("/overlay/bakurani/table-color.jpg")
+    assert "table-color.jpg" in grid["textureUrl"]
     # 81.2, 74.6 is in coverage for this store; corresponding cell should be 180
     col = int((81.2 - 0.0) / 163.84 * 16)
     row = int((163.84 - 74.6) / 163.84 * 16)
