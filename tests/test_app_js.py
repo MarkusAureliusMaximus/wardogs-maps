@@ -10,6 +10,17 @@ def _set_readout_source() -> str:
     return src[start:end]
 
 
+def test_cz_is_two_km_in_game_units():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "const CZ_GAME_SIZE = 20.0" in src
+
+
+def test_measure_tool_present():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert 'action === "measure"' in src
+    assert "azimuthDeg" in src
+
+
 def test_markers_render_tower_labels():
     src = APP_JS.read_text(encoding="utf-8")
     assert "wd-pin-label" in src

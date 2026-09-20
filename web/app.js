@@ -1,7 +1,8 @@
 "use strict";
 
 const DEFAULT_MAP = "bakurani";
-const CZ_GAME_SIZE = 0.20;
+const CZ_GAME_SIZE = 20.0;
+const METERS_PER_UNIT = 100;
 
 const state = {
   mapId: DEFAULT_MAP,
@@ -26,6 +27,10 @@ const state = {
   fromPin: null,
   currentSample: null,
   skipClick: false,
+  measure: false,
+  measureA: null,
+  measureB: null,
+  measureLine: null,
 };
 
 function gameLatLng(x, y) {
@@ -124,7 +129,31 @@ function setReadout(sample) {
   if (fromZ != null && Number.isFinite(Number(fromZ))) {
     text += "  ΔZ " + signedMeters(Number(rel) - Number(fromZ)) + " m";
   }
+  if (state.measureA && state.measureB) {
+    text += measureText(state.measureA, state.measureB);
+  }
   el.textContent = text;
+}
+
+function azimuthDeg(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let deg = (Math.atan2(dx, dy) * 180) / Math.PI;
+  if (deg < 0) {
+    deg += 360;
+  }
+  return deg;
+}
+
+function measureText(a, b) {
+  const meters = Math.hypot(b.x - a.x, b.y - a.y) * METERS_PER_UNIT;
+  return (
+    "  " +
+    meters.toFixed(0) +
+    " m  " +
+    azimuthDeg(a, b).toFixed(0) +
+    "°"
+  );
 }
 
 function placeSample(latlng) {
@@ -458,6 +487,7 @@ function enableCzDrag(rect) {
     if (moved) {
       state.skipClick = true;
     }
+    syncCz3d();
   }
 
   el.addEventListener("pointerdown", onDown);
@@ -498,6 +528,20 @@ function addCz() {
   if (state.layers.cz) {
     rect.addTo(state.map);
   }
+  syncCz3d();
+}
+
+function syncCz3d() {
+  if (!window.WardogsTable3D || !state.czRect) {
+    return;
+  }
+  const b = state.czRect.getBounds();
+  window.WardogsTable3D.setCz({
+    minX: b.getWest(),
+    minY: b.getSouth(),
+    maxX: b.getEast(),
+    maxY: b.getNorth(),
+  });
 }
 
 async function randomizeCz() {
@@ -513,6 +557,7 @@ async function randomizeCz() {
     }
     const square = await res.json();
     state.czRect.setBounds(czBoundsFromSquare(square));
+    syncCz3d();
   } catch (_err) {
     return;
   }
@@ -551,12 +596,49 @@ async function sampleAt(x, y, latlng) {
   }
 }
 
+function clearMeasure() {
+  state.measureA = null;
+  state.measureB = null;
+  if (state.measureLine && state.map) {
+    state.map.removeLayer(state.measureLine);
+  }
+  state.measureLine = null;
+}
+
+function onMeasurePoint(x, y) {
+  const pt = { x: x, y: y };
+  if (!state.measureA || state.measureB) {
+    clearMeasure();
+    state.measureA = pt;
+    return;
+  }
+  state.measureB = pt;
+  if (state.measureLine) {
+    state.map.removeLayer(state.measureLine);
+  }
+  state.measureLine = L.polyline(
+    [gameLatLng(state.measureA.x, state.measureA.y), gameLatLng(x, y)],
+    { color: "#7ecbff", weight: 2, dashArray: "6 4" }
+  ).addTo(state.map);
+  if (state.currentSample) {
+    setReadout(state.currentSample);
+  } else {
+    const el = document.getElementById("readout");
+    el.textContent = "X " + x.toFixed(2) + "  Y " + y.toFixed(2) + measureText(state.measureA, pt);
+  }
+}
+
 async function onMapClick(ev) {
   if (state.skipClick) {
     state.skipClick = false;
     return;
   }
-  await sampleAt(ev.latlng.lng, ev.latlng.lat, ev.latlng);
+  const x = ev.latlng.lng;
+  const y = ev.latlng.lat;
+  if (state.measure) {
+    onMeasurePoint(x, y);
+  }
+  await sampleAt(x, y, ev.latlng);
 }
 
 function initLeaflet(spec) {
@@ -650,6 +732,7 @@ function setView(view) {
     canvas.classList.add("visible");
     if (window.WardogsTable3D) {
       window.WardogsTable3D.show(state.mapId);
+      setTimeout(syncCz3d, 600);
     }
   } else {
     canvas.classList.remove("visible");
@@ -664,6 +747,11 @@ function setView(view) {
 }
 
 function bindUi() {
+  if (window.WardogsTable3D) {
+    window.WardogsTable3D.onSample = function (x, y) {
+      sampleAt(x, y);
+    };
+  }
   document.querySelectorAll("[data-map]").forEach(function (btn) {
     btn.addEventListener("click", function () {
       loadMap(btn.getAttribute("data-map")).catch(function () {
@@ -733,9 +821,28 @@ function bindUi() {
         setFrom();
       } else if (action === "clear-from") {
         clearFrom();
+      } else if (action === "measure") {
+        state.measure = !state.measure;
+        if (!state.measure) {
+          clearMeasure();
+        }
+        btn.classList.toggle("active", state.measure);
       }
     });
   });
+  const exag = document.getElementById("exag");
+  const exagVal = document.getElementById("exag-val");
+  if (exag) {
+    exag.addEventListener("input", function () {
+      const n = Number(exag.value);
+      if (exagVal) {
+        exagVal.textContent = n === 1 ? "×1 true" : "×" + n;
+      }
+      if (window.WardogsTable3D) {
+        window.WardogsTable3D.setExaggeration(n);
+      }
+    });
+  }
   window.addEventListener("resize", function () {
     if (state.map) {
       state.map.invalidateSize();

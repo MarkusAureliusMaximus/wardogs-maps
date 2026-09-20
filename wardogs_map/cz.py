@@ -1,6 +1,8 @@
 import random
 
-CZ_GAME_SIZE = 0.20  # 2.00 km at 100 m per game unit
+METERS_PER_UNIT = 100.0
+CZ_METERS = 2000.0
+CZ_GAME_SIZE = CZ_METERS / METERS_PER_UNIT  # 20.0 game units = 2.00 km
 
 def randomize_cz(bounds: dict, rng_seed: int | None = None) -> dict:
     rng = random.Random(rng_seed)
