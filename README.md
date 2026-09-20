@@ -1,31 +1,42 @@
-# WARDOGS Map Studio
+# WARDOGS Maps (v1)
 
-Unofficial local map study tool. Not affiliated with BULKHEAD.
+Unofficial local terrain study map for **WARDOGS**: color overhead tiles, hillshade, 20 m contours, faction markers, and a draggable 2×2 km Control Zone. Open it on this PC and on a phone on the same Wi‑Fi.
 
-Run everything from this folder. Never point the app at a game install.
+**Not affiliated with, endorsed by, or associated with BULKHEAD or Team17.** WARDOGS names and imagery belong to their owners. This repo’s **code** is MIT. Community map tiles and Terrain3D height data are **not** in git — `prepare` downloads them at runtime.
 
-v1 design: `docs/superpowers/specs/2026-09-19-wardogs-map-studio-design.md`
+## Version 1
 
-## Commands
+Tag: `v1.0.0`
+
+- Bakurani, Ozeti, Zestafona
+- Layers: color/gray tiles, hillshade (default on), color-by-height, contours, markers, Control Zone
+- Click/tap for game `X Y` and **relative** height (not ASL)
+- LAN server + QR for a phone companion
+- Does **not** read the Steam install, packed game files, or the live client (Elytra stays out of the path)
+
+## Setup
+
+Python 3.11+ (3.14 works). From this folder:
 
 ```bash
+python -m pip install -r requirements.txt
 python -m pytest
 python bake.py prepare
 python server.py
 ```
 
-## Phone / LAN
+`prepare` downloads community tiles and height chunks (16 parallel workers), verifies hashes, and bakes overlays. Budget **~10 GB** under `data/` (gitignored) and a while on first run. Re-runs skip files already on disk.
 
-`server.py` binds `0.0.0.0:8765`, prints localhost and private LAN URLs, and an ASCII QR for the LAN URL. On the phone (same Wi‑Fi), open the printed `http://192.168.x.x:8765` (or scan the QR).
-
-Allow Python through Windows Firewall on **Private** networks so phones can reach the host. If no private IPv4 is listed, check that firewall setting.
-
-## Prepare
-
-First-time `python bake.py prepare` downloads community tiles and Terrain3D chunks, verifies hashes, and bakes overlays. It may take several minutes and about **1–3 GB** of disk under `data/`.
+Then open **http://127.0.0.1:8765**. The terminal also prints a LAN URL and QR for your phone. Allow Python on **Private** networks in Windows Firewall if the phone cannot connect.
 
 ## Data sources
 
-v1 uses only published community tile pyramids and Terrain3D chunks (HTTPS), vendored map JSON under `maps/`, and files this project writes under `data/`. It never opens a Steam/Wardogs install, packs, or the game process.
+HTTPS community tile pyramids and Terrain3D chunks, plus vendored `maps/*.json`. Never a game install, pack, or process.
 
-A Bulkhead reply about Elytra / game-file reading does **not** change this app’s data sources for v1 — community tiles and terrain only.
+## Next (not in v1)
+
+3D relief table, measure/profile tools, contour labels, phone-friendly Control Zone drag.
+
+## Design
+
+`docs/superpowers/specs/2026-09-19-wardogs-map-studio-design.md`
