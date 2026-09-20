@@ -10,7 +10,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from wardogs_map import paths
 from wardogs_map.cz import randomize_cz
 from wardogs_map.download import jailed_chunk_path, verify_chunk
-from wardogs_map.heightgrid import DEFAULT_N, build_heightgrid
+from wardogs_map.heightgrid import DEFAULT_N, load_or_build_heightgrid
+from wardogs_map.table_assets import stitch_table_color, table_color_path
 from wardogs_map.mapspec import list_map_ids, load_map
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
 from wardogs_map.terrain import TerrainStore
@@ -151,7 +152,8 @@ class StudioHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         spec = load_map(map_id)
-        self._send_json(build_heightgrid(store, spec, n=n))
+        stitch_table_color(map_id)
+        self._send_json(load_or_build_heightgrid(store, spec, n=n))
 
     def _handle_cz_random(self, query: str) -> None:
         qs = parse_qs(query)
@@ -266,6 +268,13 @@ class StudioHandler(BaseHTTPRequestHandler):
         if len(parts) == 3 and parts[2] == "contours.geojson":
             relative = Path(map_id) / "contours.geojson"
             self._send_under(paths.BAKED_DIR, relative, "application/json")
+            return
+        if len(parts) == 3 and parts[2] == "table-color.jpg":
+            if map_id not in list_map_ids():
+                self.send_error(404)
+                return
+            stitch_table_color(map_id)
+            self._send_file(table_color_path(map_id), "image/jpeg")
             return
         if len(parts) == 6 and parts[2] in ("hillshade", "hypsometric"):
             layer, z, x, y_name = parts[2:]

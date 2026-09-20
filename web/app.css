@@ -100,15 +100,45 @@ button.active {
   display: none;
 }
 
-.leaflet-div-icon.wd-marker {
+.leaflet-div-icon.wd-marker-wrap {
+  background: transparent;
+  border: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wd-pin {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
   background: #d7a452;
   border: 2px solid #0d1012;
   border-radius: 50%;
   box-sizing: border-box;
 }
 
-.leaflet-div-icon.wd-marker-tower {
+.wd-pin-tower {
   border-radius: 2px;
+  background: #e8c14a;
+  width: 14px;
+  height: 14px;
+}
+
+.wd-pin-valkyra { background: #c4453c; }
+.wd-pin-manticore { background: #3d8a5a; }
+.wd-pin-lonestar { background: #3a6ea8; }
+.wd-pin-spawn_board { background: #f2efe8; }
+.wd-pin-weapons_vendor,
+.wd-pin-garage_vendor,
+.wd-pin-vendor { background: #c47a3a; }
+
+.wd-pin-label {
+  color: #f4f1e6;
+  font: 700 11px/1.1 ui-sans-serif, system-ui, sans-serif;
+  text-shadow: 0 0 4px #0d1012, 0 1px 0 #0d1012;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .wd-cz {

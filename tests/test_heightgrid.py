@@ -1,5 +1,6 @@
 import struct
 
+from wardogs_map import paths
 from wardogs_map.heightgrid import build_heightgrid
 from wardogs_map.terrain import TerrainStore
 
@@ -43,7 +44,8 @@ def _store(raw: int, min_z: float, max_z: float) -> TerrainStore:
     )
 
 
-def test_heightgrid_size_and_known_cell():
+def test_heightgrid_size_and_known_cell(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "BAKED_DIR", tmp_path / "baked")
     store = _store(raw=65535, min_z=-10.0, max_z=10.0)
     spec = {
         "id": "bakurani",
@@ -52,7 +54,7 @@ def test_heightgrid_size_and_known_cell():
     grid = build_heightgrid(store, spec, n=16)
     assert grid["n"] == 16
     assert len(grid["heights"]) == 16 * 16
-    assert grid["textureUrl"].endswith("/tiles/bakurani/color/0/0/0.webp")
+    assert grid["textureUrl"].endswith("/overlay/bakurani/table-color.jpg")
     # 81.2, 74.6 is in coverage for this store; corresponding cell should be 180
     col = int((81.2 - 0.0) / 163.84 * 16)
     row = int((163.84 - 74.6) / 163.84 * 16)
@@ -61,7 +63,8 @@ def test_heightgrid_size_and_known_cell():
     assert abs(value - 180.0) < 0.5
 
 
-def test_heightgrid_caps_n(monkeypatch):
+def test_heightgrid_caps_n(tmp_path, monkeypatch):
+    monkeypatch.setattr(paths, "BAKED_DIR", tmp_path / "baked")
     monkeypatch.setattr("wardogs_map.heightgrid.MAX_N", 12)
     store = _store(raw=0, min_z=-1.0, max_z=1.0)
     spec = {

@@ -11,6 +11,7 @@
   let scene = null;
   let camera = null;
   let mesh = null;
+  let pins = [];
   let raf = 0;
   let active = false;
   let yaw = 0.6;
@@ -28,8 +29,8 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setClearColor(0x05070a, 1);
     scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x05070a, 180, 520);
-    camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+    scene.fog = new THREE.Fog(0x05070a, 90, 720);
+    camera = new THREE.PerspectiveCamera(45, 1, 0.05, 3000);
     const hemi = new THREE.HemisphereLight(0xc8d4e0, 0x2a2418, 0.7);
     scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xfff1d0, 1.1);
@@ -98,7 +99,7 @@
         maxH = heights[i];
       }
     }
-    const scale = 28 / maxH;
+    const scale = 36 / maxH;
     for (let i = 0; i < pos.count; i++) {
       const h = heights[i];
       const z = h == null ? 0 : h * scale;
@@ -106,30 +107,109 @@
     }
     pos.needsUpdate = true;
     geo.computeVertexNormals();
+    texture.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = THREE.LinearFilter;
     const mat = new THREE.MeshStandardMaterial({
       map: texture,
-      roughness: 0.92,
-      metalness: 0.04,
+      roughness: 0.88,
+      metalness: 0.02,
     });
     mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.scale = scale;
+    mesh.userData.grid = grid;
     scene.add(mesh);
+    return scale;
+  }
+
+  function clearPins() {
+    pins.forEach(function (obj) {
+      scene.remove(obj);
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (obj.material.map) obj.material.map.dispose();
+        obj.material.dispose();
+      }
+    });
+    pins = [];
+  }
+
+  function pinColor(kind) {
+    if (kind === "tower") return 0xe8c14a;
+    if (kind === "valkyra") return 0xc4453c;
+    if (kind === "manticore") return 0x3d8a5a;
+    if (kind === "lonestar") return 0x3a6ea8;
+    if (kind === "spawn_board") return 0xf2efe8;
+    if (String(kind).indexOf("vendor") >= 0) return 0xc47a3a;
+    return 0xd7a452;
+  }
+
+  function heightAt(grid, gx, gy, scale) {
+    const n = grid.n;
+    const u = (gx - grid.minX) / (grid.maxX - grid.minX);
+    const v = (grid.maxY - gy) / (grid.maxY - grid.minY);
+    const col = Math.min(n - 1, Math.max(0, Math.round(u * (n - 1))));
+    const row = Math.min(n - 1, Math.max(0, Math.round(v * (n - 1))));
+    const h = grid.heights[row * n + col];
+    return (h == null ? 0 : h) * scale;
+  }
+
+  function gameToWorld(grid, gx, gy, scale) {
+    const u = (gx - grid.minX) / (grid.maxX - grid.minX);
+    const v = (grid.maxY - gy) / (grid.maxY - grid.minY);
+    return {
+      x: (u - 0.5) * 160,
+      y: heightAt(grid, gx, gy, scale),
+      z: (v - 0.5) * 160,
+    };
+  }
+
+  function addPins(grid, spec, scale) {
+    clearPins();
+    const mpu = spec.coordinateMetersPerUnit || 100;
+    (spec.markers || []).forEach(function (m) {
+      const gx = Number(m.x) / mpu;
+      const gy = Number(m.y) / mpu;
+      const p = gameToWorld(grid, gx, gy, scale);
+      const color = pinColor(m.icon);
+      const isTower = m.icon === "tower";
+      const stem = new THREE.Mesh(
+        new THREE.CylinderGeometry(isTower ? 0.35 : 0.28, isTower ? 0.45 : 0.32, 4.2, 8),
+        new THREE.MeshStandardMaterial({ color: color, roughness: 0.45 })
+      );
+      stem.position.set(p.x, p.y + 2.2, p.z);
+      scene.add(stem);
+      pins.push(stem);
+      const head = new THREE.Mesh(
+        isTower
+          ? new THREE.BoxGeometry(1.1, 1.1, 1.1)
+          : new THREE.SphereGeometry(0.7, 10, 8),
+        new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.18 })
+      );
+      head.position.set(p.x, p.y + 4.8, p.z);
+      scene.add(head);
+      pins.push(head);
+    });
   }
 
   async function load(mapId) {
     ensure();
     resize();
-    const res = await fetch("/api/heightgrid?map=" + encodeURIComponent(mapId) + "&n=128");
+    const res = await fetch("/api/heightgrid?map=" + encodeURIComponent(mapId) + "&n=256");
     if (!res.ok) {
       return;
     }
     const grid = await res.json();
+    const specRes = await fetch("/maps/" + encodeURIComponent(mapId) + ".json");
+    const spec = specRes.ok ? await specRes.json() : { markers: [] };
     const texLoader = new THREE.TextureLoader();
     texLoader.setCrossOrigin("anonymous");
     const texture = await new Promise(function (resolve, reject) {
       texLoader.load(grid.textureUrl, resolve, undefined, reject);
     });
     texture.colorSpace = THREE.SRGBColorSpace;
-    buildMesh(grid, texture);
+    const scale = buildMesh(grid, texture);
+    addPins(grid, spec, scale);
   }
 
   canvas.addEventListener("pointerdown", function (ev) {
@@ -161,7 +241,7 @@
     "wheel",
     function (ev) {
       ev.preventDefault();
-      distance = Math.min(420, Math.max(90, distance + ev.deltaY * 0.12));
+      distance = Math.min(480, Math.max(28, distance + ev.deltaY * 0.12));
     },
     { passive: false }
   );

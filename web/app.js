@@ -287,11 +287,24 @@ function refreshContourLabels() {
   group.addTo(state.map);
 }
 
-function communityMarkerIcon(kind) {
+function escapeHtml(text) {
+  return String(text == null ? "" : text).replace(/[&<>"']/g, function (ch) {
+    return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch];
+  });
+}
+
+function communityMarkerIcon(kind, label) {
+  const k = kind || "default";
   return L.divIcon({
-    className: "wd-marker wd-marker-" + (kind || "default"),
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
+    className: "wd-marker-wrap",
+    html:
+      '<div class="wd-pin wd-pin-' +
+      escapeHtml(k) +
+      '"></div><span class="wd-pin-label">' +
+      escapeHtml(label || "") +
+      "</span>",
+    iconSize: [140, 22],
+    iconAnchor: [8, 11],
   });
 }
 
@@ -310,7 +323,8 @@ function addMarkersAndPolygons() {
     const y = metresToGame(m.y, spec);
     const marker = L.marker([y, x], {
       title: m.label || "",
-      icon: communityMarkerIcon(m.icon),
+      icon: communityMarkerIcon(m.icon, m.label),
+      zIndexOffset: m.icon === "tower" ? 500 : 200,
     });
     marker.on("click", function (ev) {
       L.DomEvent.stopPropagation(ev);

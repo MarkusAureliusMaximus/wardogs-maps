@@ -10,6 +10,13 @@ def _set_readout_source() -> str:
     return src[start:end]
 
 
+def test_markers_render_tower_labels():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "wd-pin-label" in src
+    assert "communityMarkerIcon(m.icon, m.label)" in src
+    assert 'm.icon === "tower"' in src
+
+
 def test_cz_drag_uses_pointer_events():
     src = APP_JS.read_text(encoding="utf-8")
     assert "pointerdown" in src
