@@ -99,6 +99,10 @@
       return;
     }
     placeCamera();
+    const north = document.getElementById("north");
+    if (north) {
+      north.style.transform = "rotate(" + -yaw + "rad)";
+    }
     renderer.render(scene, camera);
     raf = requestAnimationFrame(tick);
   }
@@ -425,6 +429,10 @@
     hide: function () {
       active = false;
       cancelAnimationFrame(raf);
+      const north = document.getElementById("north");
+      if (north) {
+        north.style.transform = "";
+      }
     },
     setExaggeration: function (value) {
       exaggeration = Math.max(1, Math.min(4, Number(value) || 1));

@@ -15,6 +15,18 @@ def test_cz_is_two_km_in_game_units():
     assert "const CZ_GAME_SIZE = 20.0" in src
 
 
+def test_export_fullscreen_intel_and_north():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "exportPng" in src
+    assert "toggleFullscreen" in src
+    assert "addIntelAt" in src
+    assert "enemy-fob" in src
+    assert "gridRef" in src
+    html = (APP_JS.parent / "index.html").read_text(encoding="utf-8")
+    assert 'id="north"' in html
+    assert "html2canvas.min.js" in html
+
+
 def test_profile_pins_and_share():
     src = APP_JS.read_text(encoding="utf-8")
     assert "fetchProfile" in src

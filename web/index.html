@@ -23,10 +23,24 @@
       <button type="button" data-layer="markers" class="active">Markers</button>
       <button type="button" data-layer="cz" class="active">CZ</button>
       <button type="button" data-layer="grid">Grid</button>
+      <button type="button" data-layer="intel" class="active">Intel</button>
       <button type="button" data-action="randomize-cz">Randomize CZ</button>
       <button type="button" data-action="from">From</button>
       <button type="button" data-action="clear-from">Clear From</button>
       <button type="button" data-action="measure">Measure</button>
+      <select id="intel-kind" aria-label="Intel type">
+        <option value="enemy-fob">Enemy FOB</option>
+        <option value="friendly-fob">Friendly FOB</option>
+        <option value="enemy">Enemy</option>
+        <option value="mortar">Mortar</option>
+        <option value="aa">AA</option>
+        <option value="loot">Loot</option>
+      </select>
+      <button type="button" data-action="spot">Spot</button>
+      <button type="button" data-action="export-intel">Export intel</button>
+      <button type="button" data-action="import-intel">Import intel</button>
+      <button type="button" data-action="clear-intel">Clear intel</button>
+      <input id="intel-file" type="file" accept="application/json" hidden>
       <button type="button" data-action="pin">Pin</button>
       <button type="button" data-action="copy">Copy XY</button>
       <button type="button" data-action="share">Share URL</button>
@@ -34,16 +48,20 @@
         <input id="exag" type="range" min="1" max="4" step="0.5" value="1">
         <span id="exag-val">×1 true</span>
       </label>
+      <button type="button" data-action="export-png">PNG</button>
+      <button type="button" data-action="fullscreen">Full</button>
       <button type="button" data-view="2d" class="active">2D</button>
       <button type="button" data-view="3d">3D table</button>
     </nav>
   </header>
   <div id="map"></div>
   <canvas id="table3d"></canvas>
-  <div id="legend">Tower · Valkyra · Manticore · Lonestar · Vendor · 1 km grid · your pins</div>
+  <div id="north" aria-hidden="true"><span>N</span></div>
+  <div id="legend">Tower · Valkyra · Manticore · Lonestar · FOB · pins · 1 km grid</div>
   <svg id="profile" viewBox="0 0 320 56" aria-label="Elevation profile" hidden></svg>
   <div id="readout"></div>
   <script src="/vendor/leaflet.js"></script>
+  <script src="/vendor/html2canvas.min.js"></script>
   <script src="/vendor/three.min.js"></script>
   <script src="/web/table3d.js"></script>
   <script src="/web/app.js"></script>

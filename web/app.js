@@ -16,6 +16,7 @@ const state = {
     markers: true,
     cz: true,
     grid: false,
+    intel: true,
   },
   tileLayer: null,
   hillshadeLayer: null,
@@ -35,8 +36,26 @@ const state = {
   measureLine: null,
   czStats: null,
   pinLayer: null,
+  intelLayer: null,
   pendingShare: null,
+  spot: false,
 };
+
+function gridRef(x, y) {
+  if (!state.spec || !state.spec.tileBounds) {
+    return "";
+  }
+  const tb = state.spec.tileBounds;
+  const step = 10;
+  const startX = Math.ceil(tb.minX / step) * step;
+  const startY = Math.ceil(tb.minY / step) * step;
+  const col = Math.floor((x - startX) / step);
+  const row = Math.floor((y - startY) / step) + 1;
+  if (col < 0 || row < 1 || col > 25) {
+    return "";
+  }
+  return String.fromCharCode(65 + col) + String(row);
+}
 
 function gameLatLng(x, y) {
   return L.latLng(y, x);
@@ -123,7 +142,12 @@ function setReadout(sample) {
     el.textContent = "no coverage";
     return;
   }
-  const coords = "X " + x.toFixed(2) + "  Y " + y.toFixed(2);
+  const coords =
+    "X " +
+    x.toFixed(2) +
+    "  Y " +
+    y.toFixed(2) +
+    (gridRef(x, y) ? "  " + gridRef(x, y) : "");
   const rel = sample.relZ;
   if (!sample.ok || rel == null || !Number.isFinite(Number(rel))) {
     el.textContent = coords + "  rel —";
@@ -652,6 +676,177 @@ function removePin(id) {
   addPersonalPins();
 }
 
+const INTEL_KEY = "wardogs-maps-intel";
+const INTEL_LABELS = {
+  "enemy-fob": "Enemy FOB",
+  "friendly-fob": "Friendly FOB",
+  enemy: "Enemy",
+  mortar: "Mortar",
+  aa: "AA",
+  loot: "Loot",
+};
+
+function readIntel() {
+  try {
+    const list = JSON.parse(localStorage.getItem(INTEL_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (_err) {
+    return [];
+  }
+}
+
+function writeIntel(list) {
+  try {
+    localStorage.setItem(INTEL_KEY, JSON.stringify(list));
+  } catch (_err) {}
+}
+
+function intelKind() {
+  const sel = document.getElementById("intel-kind");
+  return (sel && sel.value) || "enemy-fob";
+}
+
+function addIntelLayer() {
+  if (state.intelLayer && state.map) {
+    state.map.removeLayer(state.intelLayer);
+  }
+  state.intelLayer = null;
+  if (!state.map || !state.layers.intel) {
+    return;
+  }
+  const group = L.layerGroup();
+  readIntel()
+    .filter(function (p) {
+      return p.mapId === state.mapId;
+    })
+    .forEach(function (item) {
+      const kind = item.kind || "enemy-fob";
+      const label = item.label || INTEL_LABELS[kind] || kind;
+      const marker = L.marker(gameLatLng(item.x, item.y), {
+        title: label,
+        zIndexOffset: 900,
+        icon: communityMarkerIcon(kind, label),
+      });
+      marker.on("click", function (ev) {
+        L.DomEvent.stop(ev);
+        removeIntel(item.id);
+      });
+      group.addLayer(marker);
+    });
+  state.intelLayer = group;
+  group.addTo(state.map);
+}
+
+function addIntelAt(x, y) {
+  const kind = intelKind();
+  const ref = gridRef(x, y);
+  const list = readIntel();
+  list.push({
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    mapId: state.mapId,
+    kind: kind,
+    x: x,
+    y: y,
+    label: (INTEL_LABELS[kind] || kind) + (ref ? " " + ref : ""),
+    at: Date.now(),
+  });
+  writeIntel(list);
+  addIntelLayer();
+}
+
+function removeIntel(id) {
+  writeIntel(
+    readIntel().filter(function (p) {
+      return p.id !== id;
+    })
+  );
+  addIntelLayer();
+}
+
+function exportIntel() {
+  const blob = new Blob([JSON.stringify(readIntel(), null, 2)], {
+    type: "application/json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "wardogs-intel.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function importIntelFile(file) {
+  const reader = new FileReader();
+  reader.onload = function () {
+    try {
+      const incoming = JSON.parse(String(reader.result));
+      if (!Array.isArray(incoming)) {
+        return;
+      }
+      const have = {};
+      const merged = readIntel();
+      merged.forEach(function (p) {
+        have[p.id] = true;
+      });
+      incoming.forEach(function (p) {
+        if (p && p.id && p.mapId && Number.isFinite(Number(p.x)) && !have[p.id]) {
+          merged.push(p);
+        }
+      });
+      writeIntel(merged);
+      addIntelLayer();
+    } catch (_err) {}
+  };
+  reader.readAsText(file);
+}
+
+function toggleFullscreen() {
+  const root = document.documentElement;
+  if (!document.fullscreenElement) {
+    root.requestFullscreen && root.requestFullscreen();
+  } else {
+    document.exitFullscreen && document.exitFullscreen();
+  }
+}
+
+function downloadBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportPng() {
+  const name =
+    "wardogs-" +
+    state.mapId +
+    (state.currentSample && Number.isFinite(Number(state.currentSample.x))
+      ? "-x" + Number(state.currentSample.x).toFixed(0) + "y" + Number(state.currentSample.y).toFixed(0)
+      : "") +
+    ".png";
+  const canvas = document.getElementById("table3d");
+  if (canvas && canvas.classList.contains("visible") && canvas.toBlob) {
+    canvas.toBlob(function (blob) {
+      if (blob) {
+        downloadBlob(blob, name);
+      }
+    });
+    return;
+  }
+  const node = document.getElementById("map");
+  if (window.html2canvas && node) {
+    window.html2canvas(node, { backgroundColor: "#0d1012", useCORS: true, logging: false }).then(
+      function (shot) {
+        shot.toBlob(function (blob) {
+          if (blob) {
+            downloadBlob(blob, name);
+          }
+        });
+      }
+    );
+  }
+}
+
 function parseShare() {
   const q = new URLSearchParams(window.location.search);
   const out = {};
@@ -1015,6 +1210,9 @@ async function onMapClick(ev) {
   if (state.measure) {
     onMeasurePoint(x, y);
   }
+  if (state.spot) {
+    addIntelAt(x, y);
+  }
   await sampleAt(x, y, ev.latlng);
 }
 
@@ -1035,6 +1233,7 @@ function initLeaflet(spec) {
   state.markersLayer = null;
   state.gridLayer = null;
   state.pinLayer = null;
+  state.intelLayer = null;
   state.czRect = null;
   state.sampleMarker = null;
   state.fromPin = null;
@@ -1066,6 +1265,7 @@ function initLeaflet(spec) {
   addCz();
   addKmGrid();
   addPersonalPins();
+  addIntelLayer();
   addScaleBar(map);
   map.on("click", onMapClick);
   map.on("zoomend", refreshContourLabels);
@@ -1188,6 +1388,8 @@ function bindUi() {
         }
       } else if (key === "grid") {
         addKmGrid();
+      } else if (key === "intel") {
+        addIntelLayer();
       }
       restackOverlays();
       syncChips();
@@ -1211,16 +1413,51 @@ function bindUi() {
         clearFrom();
       } else if (action === "measure") {
         state.measure = !state.measure;
+        if (state.measure) {
+          state.spot = false;
+        }
         if (!state.measure) {
           clearMeasure();
         }
-        btn.classList.toggle("active", state.measure);
+        document.querySelectorAll("[data-action='spot'], [data-action='measure']").forEach(function (b) {
+          b.classList.toggle(
+            "active",
+            b.getAttribute("data-action") === "measure" ? state.measure : state.spot
+          );
+        });
+        return;
       } else if (action === "copy") {
         copyCoords();
       } else if (action === "pin") {
         addPinHere();
       } else if (action === "share") {
         copyShareUrl();
+      } else if (action === "spot") {
+        state.spot = !state.spot;
+        if (state.spot) {
+          state.measure = false;
+        }
+        document.querySelectorAll("[data-action='spot'], [data-action='measure']").forEach(function (b) {
+          b.classList.toggle("active", b.getAttribute("data-action") === "spot" ? state.spot : state.measure);
+        });
+      } else if (action === "export-png") {
+        exportPng();
+      } else if (action === "fullscreen") {
+        toggleFullscreen();
+      } else if (action === "export-intel") {
+        exportIntel();
+      } else if (action === "import-intel") {
+        const inp = document.getElementById("intel-file");
+        if (inp) {
+          inp.click();
+        }
+      } else if (action === "clear-intel") {
+        writeIntel(
+          readIntel().filter(function (p) {
+            return p.mapId !== state.mapId;
+          })
+        );
+        addIntelLayer();
       }
     });
   });
@@ -1241,6 +1478,31 @@ function bindUi() {
   window.addEventListener("resize", function () {
     if (state.map) {
       state.map.invalidateSize();
+    }
+  });
+  const intelFile = document.getElementById("intel-file");
+  if (intelFile) {
+    intelFile.addEventListener("change", function () {
+      if (intelFile.files && intelFile.files[0]) {
+        importIntelFile(intelFile.files[0]);
+        intelFile.value = "";
+      }
+    });
+  }
+  document.addEventListener("keydown", function (ev) {
+    const tag = (ev.target && ev.target.tagName) || "";
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") {
+      return;
+    }
+    if (ev.key === "f" || ev.key === "F") {
+      toggleFullscreen();
+    } else if (ev.key === "e" || ev.key === "E") {
+      exportPng();
+    } else if (ev.key === "m" || ev.key === "M") {
+      const btn = document.querySelector("[data-action='measure']");
+      if (btn) {
+        btn.click();
+      }
     }
   });
 }

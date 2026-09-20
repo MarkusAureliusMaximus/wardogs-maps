@@ -145,6 +145,51 @@ button.active {
   cursor: move;
 }
 
+#intel-kind {
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: 1px solid #3a4448;
+  background: #1f2629;
+  color: #e8ece8;
+  border-radius: 999px;
+}
+
+#north {
+  position: absolute;
+  right: 0.7rem;
+  top: 7.5rem;
+  z-index: 950;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(13, 16, 18, 0.75);
+  border: 1px solid #3a4448;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e8c14a;
+  font: 700 14px ui-sans-serif, system-ui;
+  pointer-events: none;
+}
+
+#north::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid #c4453c;
+}
+
+.wd-pin-enemy-fob { background: #c4453c; border-radius: 2px; }
+.wd-pin-friendly-fob { background: #3a6ea8; border-radius: 2px; }
+.wd-pin-enemy { background: #ff6b5a; }
+.wd-pin-mortar { background: #9b59b6; border-radius: 2px; }
+.wd-pin-aa { background: #1abc9c; border-radius: 2px; }
+.wd-pin-loot { background: #f1c40f; }
+
 label.exag {
   display: flex;
   align-items: center;
