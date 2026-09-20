@@ -25,11 +25,16 @@
       <button type="button" data-action="randomize-cz">Randomize CZ</button>
       <button type="button" data-action="from">From</button>
       <button type="button" data-action="clear-from">Clear From</button>
+      <button type="button" data-view="2d" class="active">2D</button>
+      <button type="button" data-view="3d">3D table</button>
     </nav>
   </header>
   <div id="map"></div>
+  <canvas id="table3d"></canvas>
   <div id="readout"></div>
   <script src="/vendor/leaflet.js"></script>
+  <script src="/vendor/three.min.js"></script>
+  <script src="/web/table3d.js"></script>
   <script src="/web/app.js"></script>
 </body>
 </html>

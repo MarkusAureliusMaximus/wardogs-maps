@@ -19,6 +19,7 @@ const state = {
   hillshadeLayer: null,
   hypsometricLayer: null,
   contoursLayer: null,
+  contourLabels: null,
   markersLayer: null,
   czRect: null,
   sampleMarker: null,
@@ -186,7 +187,7 @@ function addHillshade() {
     state.spec.hillshadeTemplate,
     tileLayerOptions(state.spec, {
       className: "layer-hillshade",
-      opacity: 1,
+      opacity: 0.62,
       zIndex: 3,
     })
   );
@@ -209,6 +210,10 @@ function addHypsometric() {
 }
 
 async function addContours() {
+  if (state.contourLabels) {
+    state.map.removeLayer(state.contourLabels);
+    state.contourLabels = null;
+  }
   if (state.contoursLayer) {
     state.map.removeLayer(state.contoursLayer);
     state.contoursLayer = null;
@@ -226,17 +231,60 @@ async function addContours() {
       style: function (feat) {
         const index = feat && feat.properties && feat.properties.index;
         return {
-          color: index ? "#1a1a1a" : "#5a4632",
-          weight: index ? 1.6 : 0.8,
-          opacity: 0.85,
+          color: index ? "#f0e6c8" : "#c4b48a",
+          weight: index ? 1.8 : 0.9,
+          opacity: index ? 0.95 : 0.7,
           fill: false,
         };
       },
     });
     state.contoursLayer.addTo(state.map);
+    refreshContourLabels();
   } catch (_err) {
     state.contoursLayer = null;
   }
+}
+
+function refreshContourLabels() {
+  if (state.contourLabels) {
+    state.map.removeLayer(state.contourLabels);
+    state.contourLabels = null;
+  }
+  if (!state.map || !state.layers.contours || !state.contoursLayer) {
+    return;
+  }
+  if (state.map.getZoom() < 5) {
+    return;
+  }
+  const group = L.layerGroup();
+  let count = 0;
+  state.contoursLayer.eachLayer(function (layer) {
+    if (count >= 40) {
+      return;
+    }
+    const feat = layer.feature;
+    if (!feat || !feat.properties || !feat.properties.index) {
+      return;
+    }
+    const latlngs = layer.getLatLngs ? layer.getLatLngs() : [];
+    const flat = latlngs.length && Array.isArray(latlngs[0]) ? latlngs[0] : latlngs;
+    if (!flat || !flat.length) {
+      return;
+    }
+    const mid = flat[Math.floor(flat.length / 2)];
+    const tip = L.tooltip({
+      permanent: true,
+      direction: "center",
+      className: "contour-label",
+      opacity: 0.9,
+    })
+      .setLatLng(mid)
+      .setContent(String(feat.properties.level) + " m");
+    group.addLayer(tip);
+    count += 1;
+  });
+  state.contourLabels = group;
+  group.addTo(state.map);
 }
 
 function communityMarkerIcon(kind) {
@@ -312,83 +360,109 @@ function defaultCzSquare(spec) {
   };
 }
 
+function clampCzOrigin(minX, minY) {
+  const b = state.spec.bounds;
+  const size = CZ_GAME_SIZE;
+  const maxOriginX = b.maxX - size;
+  const maxOriginY = b.maxY - size;
+  return {
+    minX: Math.min(Math.max(minX, b.minX), maxOriginX),
+    minY: Math.min(Math.max(minY, b.minY), maxOriginY),
+    maxX: 0,
+    maxY: 0,
+  };
+}
+
 function enableCzDrag(rect) {
   const map = state.map;
+  const el = map.getContainer();
+  let dragging = false;
+  let pointerId = null;
   let startLatLng = null;
-  let startBounds = null;
+  let startMin = null;
   let moved = false;
-  let enabled = false;
 
-  function onMove(ev) {
-    if (!startLatLng) {
+  function onDown(ev) {
+    if (!state.layers.cz || !state.czRect) {
       return;
     }
-    const dLat = ev.latlng.lat - startLatLng.lat;
-    const dLng = ev.latlng.lng - startLatLng.lng;
-    if (dLat !== 0 || dLng !== 0) {
-      moved = true;
+    if (ev.isPrimary === false) {
+      return;
     }
-    const sw = startBounds.getSouthWest();
-    const ne = startBounds.getNorthEast();
-    rect.setBounds([
-      [sw.lat + dLat, sw.lng + dLng],
-      [ne.lat + dLat, ne.lng + dLng],
-    ]);
+    const latlng = map.mouseEventToLatLng(ev);
+    if (!rect.getBounds().contains(latlng)) {
+      return;
+    }
+    ev.preventDefault();
+    dragging = true;
+    pointerId = ev.pointerId;
+    moved = false;
+    startLatLng = latlng;
+    const bounds = rect.getBounds();
+    startMin = { x: bounds.getWest(), y: bounds.getSouth() };
+    try {
+      el.setPointerCapture(pointerId);
+    } catch (_err) {}
+    map.dragging.disable();
+    if (map.touchZoom) {
+      map.touchZoom.disable();
+    }
   }
 
-  function onUp() {
-    if (!startLatLng) {
+  function onMove(ev) {
+    if (!dragging || ev.pointerId !== pointerId) {
       return;
     }
-    startLatLng = null;
-    map.off("mousemove", onMove);
-    map.off("mouseup", onUp);
+    const latlng = map.mouseEventToLatLng(ev);
+    const dx = latlng.lng - startLatLng.lng;
+    const dy = latlng.lat - startLatLng.lat;
+    if (dx !== 0 || dy !== 0) {
+      moved = true;
+    }
+    const origin = clampCzOrigin(startMin.x + dx, startMin.y + dy);
+    origin.maxX = origin.minX + CZ_GAME_SIZE;
+    origin.maxY = origin.minY + CZ_GAME_SIZE;
+    rect.setBounds(czBoundsFromSquare(origin));
+  }
+
+  function onUp(ev) {
+    if (!dragging) {
+      return;
+    }
+    if (pointerId != null && ev.pointerId !== pointerId) {
+      return;
+    }
+    dragging = false;
+    try {
+      el.releasePointerCapture(pointerId);
+    } catch (_err) {}
+    pointerId = null;
     map.dragging.enable();
+    if (map.touchZoom) {
+      map.touchZoom.enable();
+    }
     if (moved) {
       state.skipClick = true;
     }
   }
 
-  function onDown(ev) {
-    L.DomEvent.stop(ev);
-    startLatLng = ev.latlng;
-    startBounds = rect.getBounds();
-    moved = false;
-    map.dragging.disable();
-    map.on("mousemove", onMove);
-    map.on("mouseup", onUp);
-  }
-
-  rect.on("click", function (ev) {
-    if (moved || state.skipClick) {
-      L.DomEvent.stop(ev);
-      state.skipClick = false;
-      return;
-    }
-    onMapClick(ev);
-  });
-
-  rect.dragging = {
-    enable: function () {
-      if (enabled) {
-        return;
-      }
-      enabled = true;
-      rect.on("mousedown", onDown);
-    },
-    disable: function () {
-      if (!enabled) {
-        return;
-      }
-      enabled = false;
-      rect.off("mousedown", onDown);
-    },
+  el.addEventListener("pointerdown", onDown);
+  el.addEventListener("pointermove", onMove);
+  el.addEventListener("pointerup", onUp);
+  el.addEventListener("pointercancel", onUp);
+  rect._wdDragCleanup = function () {
+    el.removeEventListener("pointerdown", onDown);
+    el.removeEventListener("pointermove", onMove);
+    el.removeEventListener("pointerup", onUp);
+    el.removeEventListener("pointercancel", onUp);
   };
-  rect.dragging.enable();
 }
 
 function addCz() {
   if (state.czRect) {
+    if (state.czRect._wdDragCleanup) {
+      state.czRect._wdDragCleanup();
+    }
     state.map.removeLayer(state.czRect);
     state.czRect = null;
   }
@@ -473,6 +547,9 @@ async function onMapClick(ev) {
 
 function initLeaflet(spec) {
   const el = document.getElementById("map");
+  if (state.czRect && state.czRect._wdDragCleanup) {
+    state.czRect._wdDragCleanup();
+  }
   if (state.map) {
     state.map.remove();
     state.map = null;
@@ -481,6 +558,7 @@ function initLeaflet(spec) {
   state.hillshadeLayer = null;
   state.hypsometricLayer = null;
   state.contoursLayer = null;
+  state.contourLabels = null;
   state.markersLayer = null;
   state.czRect = null;
   state.sampleMarker = null;
@@ -512,6 +590,7 @@ function initLeaflet(spec) {
   addMarkersAndPolygons();
   addCz();
   map.on("click", onMapClick);
+  map.on("zoomend", refreshContourLabels);
 }
 
 async function loadMap(mapId) {
@@ -523,6 +602,9 @@ async function loadMap(mapId) {
   state.mapId = mapId;
   state.spec = spec;
   initLeaflet(spec);
+  if (document.getElementById("table3d").classList.contains("visible") && window.WardogsTable3D) {
+    window.WardogsTable3D.show(state.mapId);
+  }
   document.querySelectorAll("[data-map]").forEach(function (btn) {
     btn.classList.toggle("active", btn.getAttribute("data-map") === mapId);
   });
@@ -541,6 +623,30 @@ function syncChips() {
       btn.classList.toggle("active", !!state.layers[key]);
     }
   });
+}
+
+function setView(view) {
+  const mapEl = document.getElementById("map");
+  const canvas = document.getElementById("table3d");
+  document.querySelectorAll("[data-view]").forEach(function (btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-view") === view);
+  });
+  if (view === "3d") {
+    mapEl.classList.add("hidden-view");
+    canvas.classList.add("visible");
+    if (window.WardogsTable3D) {
+      window.WardogsTable3D.show(state.mapId);
+    }
+  } else {
+    canvas.classList.remove("visible");
+    mapEl.classList.remove("hidden-view");
+    if (window.WardogsTable3D) {
+      window.WardogsTable3D.hide();
+    }
+    if (state.map) {
+      state.map.invalidateSize();
+    }
+  }
 }
 
 function bindUi() {
@@ -596,6 +702,12 @@ function bindUi() {
       }
       restackOverlays();
       syncChips();
+    });
+  });
+  document.querySelectorAll("[data-view]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const view = btn.getAttribute("data-view");
+      setView(view);
     });
   });
   document.querySelectorAll("[data-action]").forEach(function (btn) {

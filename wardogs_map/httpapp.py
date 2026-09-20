@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 from wardogs_map import paths
 from wardogs_map.cz import randomize_cz
 from wardogs_map.download import jailed_chunk_path, verify_chunk
+from wardogs_map.heightgrid import DEFAULT_N, build_heightgrid
 from wardogs_map.mapspec import list_map_ids, load_map
 from wardogs_map.paths import MAPS_DIR, WEB_DIR
 from wardogs_map.terrain import TerrainStore
@@ -108,6 +109,9 @@ class StudioHandler(BaseHTTPRequestHandler):
         if path == "/api/cz/random":
             self._handle_cz_random(parsed.query)
             return
+        if path == "/api/heightgrid":
+            self._handle_heightgrid(parsed.query)
+            return
         if path == "/":
             self._send_file(WEB_DIR / "index.html", "text/html; charset=utf-8")
             return
@@ -132,6 +136,22 @@ class StudioHandler(BaseHTTPRequestHandler):
         self.send_error(405)
 
     do_PUT = do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = do_POST
+
+    def _handle_heightgrid(self, query: str) -> None:
+        qs = parse_qs(query)
+        map_id = (qs.get("map") or [""])[0]
+        n_raw = (qs.get("n") or [str(DEFAULT_N)])[0]
+        try:
+            n = int(n_raw)
+        except (TypeError, ValueError):
+            n = DEFAULT_N
+        stores = self.context.stores if self.context is not None else {}
+        store = stores.get(map_id)
+        if store is None or map_id not in list_map_ids():
+            self.send_error(404)
+            return
+        spec = load_map(map_id)
+        self._send_json(build_heightgrid(store, spec, n=n))
 
     def _handle_cz_random(self, query: str) -> None:
         qs = parse_qs(query)

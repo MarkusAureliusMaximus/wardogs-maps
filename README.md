@@ -6,11 +6,13 @@ Unofficial local terrain study map for **WARDOGS**: color overhead tiles, hillsh
 
 ## Version 1
 
-Tag: `v1.0.0`
+Tag: `v1.1.0`
 
 - Bakurani, Ozeti, Zestafona
-- Layers: color/gray tiles, hillshade (default on), color-by-height, contours, markers, Control Zone
+- Layers: color/gray tiles, hillshade (default on), color-by-height, contours (labels when zoomed in), markers, Control Zone
 - Click/tap for game `X Y` and **relative** height (not ASL)
+- Phone-friendly Control Zone drag
+- 3D command table (same height data, orbit with drag)
 - LAN server + QR for a phone companion
 - Does **not** read the Steam install, packed game files, or the live client (Elytra stays out of the path)
 
@@ -33,9 +35,9 @@ Then open **http://127.0.0.1:8765**. The terminal also prints a LAN URL and QR f
 
 HTTPS community tile pyramids and Terrain3D chunks, plus vendored `maps/*.json`. Never a game install, pack, or process.
 
-## Next (not in v1)
+## Next
 
-3D relief table, measure/profile tools, contour labels, phone-friendly Control Zone drag.
+Measure / ridge profile tools, higher-res 3D texture, more contour labels.
 
 ## Design
 

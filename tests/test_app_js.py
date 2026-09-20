@@ -10,6 +10,14 @@ def _set_readout_source() -> str:
     return src[start:end]
 
 
+def test_cz_drag_uses_pointer_events():
+    src = APP_JS.read_text(encoding="utf-8")
+    assert "pointerdown" in src
+    assert "setPointerCapture" in src
+    assert "touchZoom.disable" in src
+    assert "clampCzOrigin" in src
+
+
 def test_set_readout_keeps_coords_when_z_missing():
     fn = _set_readout_source()
     assert "toFixed(2)" in fn

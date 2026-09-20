@@ -71,6 +71,35 @@ button.active {
   mix-blend-mode: multiply;
 }
 
+.contour-label {
+  background: rgba(13, 16, 18, 0.72);
+  border: 0;
+  color: #f0e6c8;
+  font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  box-shadow: none;
+  padding: 1px 4px;
+}
+
+.contour-label::before {
+  display: none;
+}
+
+#table3d {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: none;
+  background: #05070a;
+}
+
+#table3d.visible {
+  display: block;
+}
+
+#map.hidden-view {
+  display: none;
+}
+
 .leaflet-div-icon.wd-marker {
   background: #d7a452;
   border: 2px solid #0d1012;
